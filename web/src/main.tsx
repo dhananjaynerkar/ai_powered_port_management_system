@@ -1977,6 +1977,7 @@ function Assistant({ user }: { user: User }) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [corpusState, setCorpusState] = useState<CorpusState | null>(null);
   const [ragReady, setRagReady] = useState(false);
+  const [ragReadyReason, setRagReadyReason] = useState("Document search is still preparing.");
   const [agendas, setAgendas] = useState<Agenda[]>([]);
   const [officers, setOfficers] = useState<Officer[]>([]);
   const [agenda, setAgenda] = useState<Agenda | null>(null);
@@ -2036,6 +2037,19 @@ function Assistant({ user }: { user: User }) {
       setToast(null);
       toastTimer.current = null;
     }, 4000);
+  };
+  const applyRagReadiness = (readiness: { ok: boolean; body: any }) => {
+    const ready = readiness.ok && readiness.body?.rag_ready === true;
+    setRagReady(ready);
+    if (ready) {
+      setRagReadyReason("");
+    } else if (readiness.body?.init_error === "database_unavailable") {
+      setRagReadyReason("Document search is temporarily unavailable. Retry when the service is ready.");
+    } else if (readiness.body?.init_error === "rag_dependency_unavailable") {
+      setRagReadyReason("Local AI dependencies are unavailable. Retry when they return.");
+    } else {
+      setRagReadyReason("Document search is still preparing.");
+    }
   };
   useEffect(() => () => {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
@@ -2100,7 +2114,7 @@ function Assistant({ user }: { user: User }) {
       }
       if (directory) setOfficers(directory.officers);
       const readiness = await fetch(base + "/health/ready", { credentials: "include" }).then(async (response) => ({ ok: response.ok, body: await response.json().catch(() => ({})) })).catch(() => ({ ok: false, body: {} }));
-      setRagReady(readiness.ok && readiness.body.rag_ready === true);
+      applyRagReadiness(readiness);
     } catch (loadError) {
       setWorkspaceError("AI Assistant is temporarily unavailable.");
       throw loadError;
@@ -2116,8 +2130,8 @@ function Assistant({ user }: { user: User }) {
         .then(async (response) => ({ ok: response.ok, body: await response.json().catch(() => ({})) }))
         .catch(() => ({ ok: false, body: {} }));
       if (cancelled) return;
+      applyRagReadiness(readiness);
       const ready = readiness.ok && readiness.body.rag_ready === true;
-      setRagReady(ready);
       if (ready && readinessTimer !== undefined) window.clearInterval(readinessTimer);
     };
     load().catch(() => setError("AI Assistant is temporarily unavailable."));
@@ -2360,7 +2374,7 @@ function Assistant({ user }: { user: User }) {
   const composerDisabledReason = agenda?.is_read_only
       ? "This agenda is view-only for your role."
     : !ragReady
-      ? "Document search is still preparing."
+      ? ragReadyReason
       : "";
   const agendaDisabledReason = busy
     ? "Wait for the current document answer to finish."

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
+import logging
+import re
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from time import perf_counter
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -41,6 +45,13 @@ from .workflow import (
     save_agenda_revision,
     transition_agenda,
 )
+
+_LOGGER = logging.getLogger("portproject_rag.api")
+_LOGGER.setLevel(logging.INFO)
+if not _LOGGER.handlers:
+    _LOGGER.addHandler(logging.StreamHandler())
+_REQUEST_ID: ContextVar[str | None] = ContextVar("portproject_request_id", default=None)
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,96}$")
 
 
 class Credentials(BaseModel):
@@ -126,6 +137,18 @@ class TenderCalculationRequest(BaseModel):
 
 def _settings() -> Settings:
     return Settings()
+
+
+def _request_id(value: str | None) -> str:
+    """Accept a bounded trace id or create one without echoing unsafe input."""
+    candidate = (value or "").strip()
+    return candidate if _REQUEST_ID_PATTERN.fullmatch(candidate) else uuid4().hex
+
+
+def _structured_log(level: int, event: str, **fields: object) -> None:
+    """Emit one JSON log record without request bodies, credentials, or secrets."""
+    payload = {"event": event, **fields}
+    _LOGGER.log(level, json.dumps(payload, sort_keys=True, default=str))
 
 
 def _stats(settings: Settings) -> dict[str, int]:
@@ -232,12 +255,29 @@ def _user_payload(user: PortalUser) -> dict[str, str]:
 
 
 def _log(settings: Settings, user: PortalUser | None, event_type: str, metadata: dict[str, object]) -> None:
-    with connect(settings.database_url.unicode_string()) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"INSERT INTO {settings.schema_name}.audit_event (user_id, principal_id, event_type, metadata) VALUES (%s, %s, %s, %s)",
-                (user.user_id if user else None, user.principal_id if user else None, event_type, Jsonb(metadata)),
-            )
+    payload = dict(metadata)
+    request_id = _REQUEST_ID.get()
+    if request_id:
+        payload.setdefault("request_id", request_id)
+    try:
+        with connect(settings.database_url.unicode_string()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"INSERT INTO {settings.schema_name}.audit_event (user_id, principal_id, event_type, metadata) VALUES (%s, %s, %s, %s)",
+                    (user.user_id if user else None, user.principal_id if user else None, event_type, Jsonb(payload)),
+                )
+    except Exception as exc:
+        # Audit persistence must not make an already-committed user operation
+        # look like a failed mutation. The structured record keeps the failure
+        # visible for operators while omitting the exception message/body.
+        _structured_log(
+            logging.ERROR,
+            "audit_write_failed",
+            request_id=request_id,
+            event_type=event_type,
+            error_type=type(exc).__name__,
+            actor_present=user is not None,
+        )
 
 
 def build_evidence_payload(results: list[RetrievedChunk]) -> list[dict[str, object]]:
@@ -631,29 +671,73 @@ def _authority_land_metrics(settings: Settings) -> dict[str, object]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = _settings()
-    migrate(settings)
     app.state.settings = settings
     app.state.rag_ready = False
     app.state.rag_init_error = None
     try:
-        with httpx.Client(timeout=settings.embedding_timeout_seconds) as client:
-            response = client.get(str(settings.embedding_endpoint).rsplit("/", 1)[0] + "/tags")
-            response.raise_for_status()
-            installed = {item.get("name", "") for item in response.json().get("models", [])}
-        def installed_model(name: str) -> bool:
-            return name in installed or f"{name}:latest" in installed
-        required = {settings.embedding_model, settings.llm_primary_model}
-        missing = sorted(model for model in required if not installed_model(model))
-        if missing:
-            raise RuntimeError(f"Missing configured Ollama models: {', '.join(missing)}")
-        _rerank(settings, "readiness check", ["readiness check"])
-        app.state.rag_ready = True
+        migrate(settings)
     except Exception as exc:
-        app.state.rag_init_error = f"{type(exc).__name__}: {exc}"
+        app.state.rag_init_error = "database_migration_failed"
+        _structured_log(logging.ERROR, "startup_dependency_failed", dependency="postgresql", stage="migration", error_type=type(exc).__name__)
+    if app.state.rag_init_error is None:
+        try:
+            with httpx.Client(timeout=settings.embedding_timeout_seconds) as client:
+                response = client.get(str(settings.embedding_endpoint).rsplit("/", 1)[0] + "/tags")
+                response.raise_for_status()
+                installed = {item.get("name", "") for item in response.json().get("models", [])}
+            def installed_model(name: str) -> bool:
+                return name in installed or f"{name}:latest" in installed
+            required = {settings.embedding_model, settings.llm_primary_model}
+            missing = sorted(model for model in required if not installed_model(model))
+            if missing:
+                raise RuntimeError("Configured local model is unavailable")
+            _rerank(settings, "readiness check", ["readiness check"])
+            app.state.rag_ready = True
+        except Exception as exc:
+            app.state.rag_init_error = "rag_dependency_unavailable"
+            _structured_log(logging.ERROR, "startup_dependency_failed", dependency="rag", stage="readiness", error_type=type(exc).__name__)
     yield
 
 
 app = FastAPI(title="PortProject RAG Portal", version="0.2.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def request_observability(request: Request, call_next):
+    """Attach a safe request id and emit one structured completion/error record."""
+    request_id = _request_id(request.headers.get("X-Request-ID"))
+    token = _REQUEST_ID.set(request_id)
+    started = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        _structured_log(
+            logging.ERROR,
+            "request_failed",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            status_code=500,
+            duration_ms=round((perf_counter() - started) * 1000),
+            error_type=type(exc).__name__,
+        )
+        raise
+    else:
+        response.headers["X-Request-ID"] = request_id
+        _structured_log(
+            logging.INFO,
+            "request_completed",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=round((perf_counter() - started) * 1000),
+        )
+        return response
+    finally:
+        _REQUEST_ID.reset(token)
+
+
 # The browser UI is served from Vite on port 5173 during local development.
 # Keep the method list aligned with the authenticated API contract: private
 # conversations can be deleted through the browser, which requires a CORS
@@ -664,7 +748,8 @@ app.add_middleware(
     allow_origins=_cors_settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
 )
 
 
@@ -703,11 +788,25 @@ def health() -> dict[str, object]:
 
 @app.get("/health/ready")
 def ready() -> JSONResponse:
+    try:
+        corpus = _stats(app.state.settings)
+    except Exception as exc:
+        _structured_log(
+            logging.ERROR,
+            "readiness_check_failed",
+            request_id=_REQUEST_ID.get(),
+            dependency="postgresql",
+            error_type=type(exc).__name__,
+        )
+        return JSONResponse(
+            {"status": "not_ready", "rag_ready": False, "init_error": "database_unavailable", "corpus": None},
+            status_code=503,
+        )
     payload = {
         "status": "ready" if app.state.rag_ready else "not_ready",
         "rag_ready": app.state.rag_ready,
         "init_error": app.state.rag_init_error,
-        "corpus": _stats(app.state.settings),
+        "corpus": corpus,
     }
     return JSONResponse(payload, status_code=200 if app.state.rag_ready else 503)
 
@@ -739,6 +838,7 @@ def _login(credentials: Credentials, response: Response, role: str, http_request
     user = authenticate(settings, credentials.username, credentials.password, role)
     if not user:
         record_login_attempt(settings, credentials.username, ip_address, False)
+        _log(settings, None, "login_failure", {"role": role, "ip_address": ip_address})
         raise HTTPException(status_code=401, detail="Invalid credentials.")
     record_login_attempt(settings, credentials.username, ip_address, True)
     token = create_session(settings, user)
@@ -887,6 +987,7 @@ def billing_predict(request: BillingRequest, user: PortalUser = Depends(current_
     except HTTPException:
         raise
     except Exception as exc:
+        _log(app.state.settings, user, "billing_forecast_failed", {"error_type": type(exc).__name__})
         raise HTTPException(status_code=503, detail="Billing prediction is temporarily unavailable.") from exc
 
 
@@ -952,6 +1053,7 @@ def tender_create_workflow(request: TenderWorkflowCreateRequest, user: PortalUse
         _log(app.state.settings, user, "tender_workflow_created", {"workflow_id": workflow["id"], "plot_id": request.plot_id, "checklist_key": request.checklist_key})
         return {"workflow": workflow}
     except TenderWorkflowError as exc:
+        _log(app.state.settings, user, "tender_workflow_failed", {"operation": "create", "plot_id": request.plot_id, "error_type": type(exc).__name__})
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -972,6 +1074,7 @@ def tender_apply_action(workflow_id: str, request: TenderWorkflowActionRequest, 
         _log(app.state.settings, user, "tender_workflow_action", {"workflow_id": workflow_id, "action": request.action, "status": workflow.get("status")})
         return {"workflow": workflow}
     except TenderWorkflowError as exc:
+        _log(app.state.settings, user, "tender_workflow_failed", {"operation": "transition", "workflow_id": workflow_id, "action": request.action, "error_type": type(exc).__name__})
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -1329,6 +1432,7 @@ def query_in_workflow_agenda(agenda_id: UUID, request: AgendaQuestionRequest, us
     except HTTPException:
         raise
     except Exception as exc:
+        _log(settings, user, "agenda_rag_query_failed", {"agenda_id": str(agenda_id), "error_type": type(exc).__name__, "question_length": len(request.question)})
         raise HTTPException(status_code=503, detail=f"Retrieval unavailable: {type(exc).__name__}") from exc
     add_agenda_message(settings, user, agenda_id, request.question, "OFFICER")
     add_agenda_message(settings, user, agenda_id, str(payload["answer"]), "AI", payload["sources"])
@@ -1353,6 +1457,7 @@ def query(request: QueryRequest, user: PortalUser = Depends(current_user)) -> di
     except HTTPException:
         raise
     except Exception as exc:
+        _log(settings, user, "rag_query_failed", {"error_type": type(exc).__name__, "question_length": len(request.question)})
         raise HTTPException(status_code=503, detail=f"Retrieval unavailable: {type(exc).__name__}") from exc
     with connect(settings.database_url.unicode_string()) as connection:
         with connection.cursor() as cursor:
