@@ -22,10 +22,12 @@ Read these documents in order:
 
 ```powershell
 Set-Location <repo-root>
-.\.venv\Scripts\python.exe -m pip install -e .
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 Set-Location .\web
-npm install
+npm ci
 Set-Location ..
+Copy-Item .env.example .env
 .\start_app.ps1
 ```
 
@@ -40,6 +42,22 @@ Use the project environment for Python commands:
 .\.venv\Scripts\ruff.exe check src tests
 Set-Location web; npm run build
 ```
+
+The complete suite also contains live database and source-backed integration
+checks. Run those only with the approved isolated test database and fixture
+bundle described in [Phase 01](docs/hardening/PHASE_01_TEST_FIXTURE.md);
+credentials and raw fixture data are intentionally not part of this repository.
+
+The `dev` extra supplies the documented test and lint tools. The optional
+`billing-training` extra is only needed for model-training workflows:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[billing-training]"
+```
+
+`npm ci` requires the committed `web/package-lock.json` and installs the
+frontend dependencies without relying on a developer's existing
+`node_modules` directory.
 
 ## Local ingestion commands
 

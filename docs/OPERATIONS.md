@@ -16,11 +16,26 @@ at `127.0.0.1:5173`.
 
 ```powershell
 Set-Location <repo-root>
+python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 Set-Location web
-npm install
+npm ci
 Set-Location ..
 Copy-Item .env.example .env
+```
+
+For the documented test and lint commands, install the development extra:
+
+```powershell
+Set-Location <repo-root>
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```
+
+The optional billing-training dependencies are not required for the portal or
+RAG runtime. Install them only for the training workflow:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[billing-training]"
 ```
 
 Set `PORTPROJECT_RAG_DATABASE_URL` only in `.env`. Do not place the database
@@ -66,6 +81,15 @@ npm run build
 
 `pyproject.toml` also declares `src` as a pytest import path, but this does not
 replace installing the project dependencies in the supported `.venv`.
+
+The complete test suite includes source-backed integration checks. Those checks
+require an approved test database URL and the non-secret billing and tender
+fixture bundle described in [Phase 01](hardening/PHASE_01_TEST_FIXTURE.md).
+Those inputs are intentionally not committed to Git and are not created by the
+base install. Without that approved fixture, the package, unit tests, and lint
+checks can still be verified, but live database, billing-artifact, and tender
+source tests are expected to remain unavailable rather than silently using
+developer-machine data.
 
 ## Configuration inventory
 
