@@ -89,6 +89,20 @@ def _table_experiment(args: argparse.Namespace) -> None:
     print(json.dumps(summary))
 
 
+def _evaluate_gold(args: argparse.Namespace) -> None:
+    from .evaluation import run_gold_evaluation
+
+    json_path, csv_path, payload = run_gold_evaluation(
+        Settings(), Path(args.gold), Path(args.output), generate=not args.no_generation
+    )
+    print(f"questions={payload['question_count']}")
+    print(f"completed={payload['completed_count']}")
+    print(f"retrieval_failed={payload['retrieval_failed_count']}")
+    print(f"generation_failed={payload['generation_failed_count']}")
+    print(f"json={json_path.resolve()}")
+    print(f"csv={csv_path.resolve()}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Corpus-aware PDF inspection for portproject")
     commands = parser.add_subparsers(required=True)
@@ -127,6 +141,11 @@ def main() -> None:
     table_parser.add_argument("--output", default="artifacts")
     table_parser.add_argument("--max-pages", type=int, default=40)
     table_parser.set_defaults(handler=_table_experiment)
+    evaluate_parser = commands.add_parser("evaluate-gold", help="Measure the current pipeline against a reviewed golden set")
+    evaluate_parser.add_argument("--gold", default="evaluation/rag_gold_v1.json")
+    evaluate_parser.add_argument("--output", default="artifacts/evaluation/rag_baseline_v1")
+    evaluate_parser.add_argument("--no-generation", action="store_true", help="Run retrieval metrics only")
+    evaluate_parser.set_defaults(handler=_evaluate_gold)
     args = parser.parse_args()
     args.handler(args)
 
