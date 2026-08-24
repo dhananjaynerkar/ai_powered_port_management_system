@@ -47,6 +47,24 @@ def _verify_password(password: str, encoded: str) -> bool:
         return False
 
 
+def _verify_external_password(settings: Settings, supplied_password: str, legacy_plaintext: object, password_hash: object) -> bool:
+    """Verify source credentials without silently accepting plaintext outside local mode."""
+    if password_hash:
+        try:
+            if bcrypt.checkpw(
+                supplied_password.encode("utf-8"),
+                str(password_hash).removeprefix("{bcrypt}").encode("utf-8"),
+            ):
+                return True
+        except (TypeError, ValueError):
+            pass
+    return bool(
+        settings.allow_legacy_plaintext_passwords
+        and legacy_plaintext
+        and compare_digest(str(legacy_plaintext), supplied_password)
+    )
+
+
 def _schema(settings: Settings) -> str:
     return settings.schema_name
 
@@ -96,12 +114,7 @@ def _external_authority(settings: Settings, username: str, password: str) -> Por
     if role not in {"HO", "NO", "DO"}:
         return None
     plain_password, password_hash = row[3], row[4]
-    verified = bool(plain_password and compare_digest(str(plain_password), password))
-    if not verified and password_hash:
-        try:
-            verified = bcrypt.checkpw(password.encode("utf-8"), str(password_hash).removeprefix("{bcrypt}").encode("utf-8"))
-        except ValueError:
-            verified = False
+    verified = _verify_external_password(settings, password, plain_password, password_hash)
     if not verified:
         return None
     return PortalUser(None, f"authority:{row[0]}", str(row[2]), str(row[1]), "authority")
@@ -119,10 +132,7 @@ def _external_tenant(settings: Settings, username: str, password: str) -> Portal
             row = cursor.fetchone()
     if not row or not row[3]:
         return None
-    try:
-        verified = bcrypt.checkpw(password.encode("utf-8"), str(row[3]).removeprefix("{bcrypt}").encode("utf-8"))
-    except ValueError:
-        verified = compare_digest(str(row[3]), password)
+    verified = _verify_external_password(settings, password, row[3], row[3])
     return PortalUser(None, f"tenant:{row[0]}", str(row[2]), str(row[1]), "tenant") if verified else None
 
 

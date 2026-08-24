@@ -15,6 +15,7 @@ Read these documents in order:
 - [API reference](docs/API_REFERENCE.md) — routes, authentication, and contracts.
 - [Project map](docs/PROJECT_MAP.md) — major folders and source-file ownership.
 - [Audit](docs/AUDIT_2026-08-24.md) — verified strengths, risks, and deliberately deferred work.
+- [Security gate](docs/hardening/PHASE_02_SECURITY.md) — deployment modes, session transport, and credential-compatibility boundaries.
 
 ## Quick start
 

@@ -607,9 +607,10 @@ app = FastAPI(title="PortProject RAG Portal", version="0.2.0", lifespan=lifespan
 # Keep the method list aligned with the authenticated API contract: private
 # conversations can be deleted through the browser, which requires a CORS
 # preflight for DELETE when UI and API use different local origins.
+_cors_settings = Settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_cors_settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
@@ -670,6 +671,16 @@ def setup(request: InitialSetup, response: Response) -> dict[str, object]:
     raise HTTPException(status_code=410, detail="Portal signup is disabled. Sign in with an existing Authority or Tenant database account.")
 
 
+def _session_cookie_options(settings: Settings) -> dict[str, object]:
+    return {
+        "httponly": True,
+        "samesite": settings.cookie_samesite,
+        "secure": settings.cookie_secure,
+        "max_age": settings.session_absolute_timeout_seconds,
+        "path": "/",
+    }
+
+
 def _login(credentials: Credentials, response: Response, role: str, http_request: Request) -> dict[str, object]:
     settings: Settings = app.state.settings
     ip_address = http_request.client.host if http_request.client else "unknown"
@@ -680,7 +691,7 @@ def _login(credentials: Credentials, response: Response, role: str, http_request
         raise HTTPException(status_code=401, detail="Invalid credentials.")
     record_login_attempt(settings, credentials.username, ip_address, True)
     token = create_session(settings, user)
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure, max_age=settings.session_absolute_timeout_seconds, path="/")
+    response.set_cookie(SESSION_COOKIE, token, **_session_cookie_options(settings))
     _log(settings, user, "login", {"role": role, "ip_address": ip_address})
     return {"status": "ok", **_user_payload(user)}
 
@@ -699,9 +710,10 @@ def tenant_login(credentials: Credentials, response: Response, http_request: Req
 @app.post("/api/authority/logout")
 @app.post("/tenant/api/auth/logout")
 def logout(request: Request, response: Response, user: PortalUser = Depends(current_user)) -> dict[str, str]:
-    delete_session(app.state.settings, request.cookies.get(SESSION_COOKIE))
-    response.delete_cookie(SESSION_COOKIE, path="/")
-    _log(app.state.settings, user, "logout", {})
+    settings: Settings = app.state.settings
+    delete_session(settings, request.cookies.get(SESSION_COOKIE))
+    response.delete_cookie(SESSION_COOKIE, **{key: value for key, value in _session_cookie_options(settings).items() if key != "max_age"})
+    _log(settings, user, "logout", {})
     return {"status": "ok"}
 
 
