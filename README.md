@@ -16,6 +16,7 @@ Read these documents in order:
 - [Project map](docs/PROJECT_MAP.md) — major folders and source-file ownership.
 - [Audit](docs/AUDIT_2026-08-24.md) — verified strengths, risks, and deliberately deferred work.
 - [Security gate](docs/hardening/PHASE_02_SECURITY.md) — deployment modes, session transport, and credential-compatibility boundaries.
+- [Backup and recovery drill](docs/hardening/PHASE_03_BACKUP_RESTORE.md) — isolated restore evidence and remaining data-recovery decisions.
 
 ## Quick start
 
