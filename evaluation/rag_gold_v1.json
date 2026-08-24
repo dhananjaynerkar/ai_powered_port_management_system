@@ -1,0 +1,219 @@
+{
+  "schema_version": "rag_gold_v1",
+  "created_at": "2026-08-25",
+  "purpose": "Reviewed evidence set for measuring the existing port-document RAG pipeline before any retrieval or model tuning.",
+  "review_policy": {
+    "review_status_values": ["reviewed", "needs_review"],
+    "positive_case_rule": "Every expected document and page is bound to an indexed source row and a manually inspected supporting fact.",
+    "negative_case_rule": "A no-answer or permission-boundary case must abstain; an empty expected_documents list is intentional.",
+    "llm_generated_expected_evidence": false
+  },
+  "corpus_snapshot": {
+    "indexed_documents": 48,
+    "indexed_chunks": 3399,
+    "indexed_embeddings": 3399,
+    "quarantined_documents": 1,
+    "embedding_model": "bge-m3",
+    "embedding_dimensions": 1024,
+    "retrieval_configuration_changed_for_this_set": false
+  },
+  "examples": [
+    {
+      "id": "RG-001",
+      "question_type": "direct_fact",
+      "question": "Under By-law No. 9, how much notice may be affixed before an obstruction is removed?",
+      "expected_documents": [
+        {
+          "filename": "Bylaw No. 9.pdf",
+          "source_sha256": "c5e1297053590d393e892cbe79d9262f29ac8cd455a9f82d8ce6e374f83cbccd",
+          "pages": [1]
+        }
+      ],
+      "expected_pages": [1],
+      "expected_supporting_fact": "The by-law permits the obstruction to be removed after 12 hours' notice is affixed at the obstruction.",
+      "allowed_role": "authority",
+      "answer_should_exist": true,
+      "review_status": "reviewed",
+      "review_notes": "Directly checked against the page-1 by-law clause; do not confuse the notice period with the later 15-day unclaimed-goods period."
+    },
+    {
+      "id": "RG-002",
+      "question_type": "direct_fact",
+      "question": "What is the lease period in the RR 1984 e-tender conditions, and is renewal provided?",
+      "expected_documents": [
+        {
+          "filename": "Annexure to TR No.23 - Procedure  Manner.pdf",
+          "source_sha256": "602260b4c120c89883734b27b1314a19a3ad81bf7f80c5c9a05f866990c9c844",
+          "pages": [35]
+        }
+      ],
+      "expected_pages": [35],
+      "expected_supporting_fact": "The conditions state a 30-year lease from handover of the property with no option for renewal.",
+      "allowed_role": "authority",
+      "answer_should_exist": true,
+      "review_status": "reviewed",
+      "review_notes": "The page is the conditions-of-lease section for Tender E-09/2021 and RR 1984."
+    },
+    {
+      "id": "RG-003",
+      "question_type": "multi_paragraph_answer",
+      "question": "What are the main conditions for transferring or sub-leasing the land in the RR 1984 tender?",
+      "expected_documents": [
+        {
+          "filename": "Annexure to TR No.23 - Procedure  Manner.pdf",
+          "source_sha256": "602260b4c120c89883734b27b1314a19a3ad81bf7f80c5c9a05f866990c9c844",
+          "pages": [12, 36, 37]
+        }
+      ],
+      "expected_pages": [12, 36, 37],
+      "expected_supporting_fact": "Sub-leasing is generally disallowed except policy-approved special-purpose cases; transfer requires prior Board approval, assumption of the original liabilities, compliance with the Port land-use plan, and payment of applicable transfer charges. Upfront-rental transfers also carry pro-rata rental and a 50% pro-rata fee unless the operation-of-law exception applies.",
+      "allowed_role": "authority",
+      "answer_should_exist": true,
+      "review_status": "reviewed",
+      "review_notes": "Requires combining the general tender clause on page 12 with the repeated conditions-of-lease clauses on pages 36–37."
+    },
+    {
+      "id": "RG-004",
+      "question_type": "multi_page_answer",
+      "question": "How are the RR 1984 tender's upfront premium installments scheduled, and what applies to delayed payment?",
+      "expected_documents": [
+        {
+          "filename": "Annexure to TR No.23 - Procedure  Manner.pdf",
+          "source_sha256": "602260b4c120c89883734b27b1314a19a3ad81bf7f80c5c9a05f866990c9c844",
+          "pages": [8, 18]
+        }
+      ],
+      "expected_pages": [8, 18],
+      "expected_supporting_fact": "The schedule is 50% within 45 days, 25% within 75 days, and 25% within 105 days from the Pre Acceptance Letter, with the security deposit and first-year token rent due with the first installment. Delayed installments are charged 15% per annum on the delayed principal; the tender summary also specifies the security-deposit basis.",
+      "allowed_role": "authority",
+      "answer_should_exist": true,
+      "review_status": "reviewed",
+      "review_notes": "The answer must cite both the detailed payment schedule and the tender summary rather than treating one paragraph as the whole rule."
+    },
+    {
+      "id": "RG-005",
+      "question_type": "policy_interpretation",
+      "question": "When may a Port Board approve a lease beyond 30 years under PGLM 2015, and what additional approval path is described?",
+      "expected_documents": [
+        {
+          "filename": "PGLM 2015_Compilation.pdf",
+          "source_sha256": "3423714973f4c7edefe8728b5e06cd43e84b3ae1db55a63077756ec1bec5c3cd",
+          "pages": [3, 9, 10]
+        }
+      ],
+      "expected_pages": [3, 9, 10],
+      "expected_supporting_fact": "The policy describes Board approval for cumulative leases up to 30 years. Renewals beyond 30 years, up to a 99-year cumulative limit, require Board recommendation and the Empowered Committee/Government approval path; capital-intensive proposals beyond 30 years are also sent through that path.",
+      "allowed_role": "authority",
+      "answer_should_exist": true,
+      "review_status": "reviewed",
+      "review_notes": "This is an interpretation case: distinguish the 30-year Board limit from the additional approval path and do not collapse them into one threshold."
+    },
+    {
+      "id": "RG-006",
+      "question_type": "cross_document_question",
+      "question": "How do the 2018 and 2019 clarification circulars treat the intervening period after an expired lease with no renewal clause?",
+      "expected_documents": [
+        {
+          "filename": "Clarification No 1 of 2018_1688.pdf",
+          "source_sha256": "390d47bc0eee9a091942f1b89f866fd638ba1dc44d69dec0d21159bbc9408552",
+          "pages": [7]
+        },
+        {
+          "filename": "Clarification No 2 of 2019_1048.pdf",
+          "source_sha256": "e169d3715d5f4612be95e7c275583e73fb86390a12d6a03931d155236beca558",
+          "pages": [2]
+        }
+      ],
+      "expected_pages": [7, 2],
+      "expected_supporting_fact": "The 2018 circular distinguishes retrospective treatment when the earlier lessee wins from prospective treatment otherwise. The 2019 circular states that, in the tender-cum-auction process, the lease period is prospective and the intervening period is regularised by the Board if the existing lessee succeeds; it identifies itself as superseding the earlier clarification.",
+      "allowed_role": "authority",
+      "answer_should_exist": true,
+      "review_status": "reviewed",
+      "review_notes": "Later clarification must be presented as later/superseding evidence; the model should not merge the two circulars into a single undated rule."
+    },
+    {
+      "id": "RG-007",
+      "question_type": "ambiguous_question",
+      "question": "What is the correct lease rent for this property?",
+      "expected_documents": [
+        {
+          "filename": "PGLM 2015_Compilation.pdf",
+          "source_sha256": "3423714973f4c7edefe8728b5e06cd43e84b3ae1db55a63077756ec1bec5c3cd",
+          "pages": [9, 10]
+        }
+      ],
+      "expected_pages": [9, 10],
+      "expected_supporting_fact": "The policy ties lease method and value to the land-use plan, lease category, term, and updated Schedule of Rates; the question supplies none of the property, purpose, area, or term needed for one reliable amount.",
+      "allowed_role": "authority",
+      "answer_should_exist": false,
+      "review_status": "reviewed",
+      "review_notes": "The correct behavior is to ask for the missing property and commercial inputs, not to return a guessed rate."
+    },
+    {
+      "id": "RG-008",
+      "question_type": "no_answer_question",
+      "question": "What will Mumbai Port's container throughput be in 2030?",
+      "expected_documents": [],
+      "expected_pages": [],
+      "expected_supporting_fact": "No indexed source document contains a 2030 container-throughput forecast.",
+      "allowed_role": "authority",
+      "answer_should_exist": false,
+      "review_status": "reviewed",
+      "review_notes": "This is an abstention case; the answer must say that the indexed corpus does not provide the forecast and must not infer one from land or tariff documents."
+    },
+    {
+      "id": "RG-009",
+      "question_type": "role_restricted_question",
+      "question": "Show me the private balance and account history for tenant customer 184.",
+      "expected_documents": [],
+      "expected_pages": [],
+      "expected_supporting_fact": "The indexed policy corpus contains no private tenant account records, so the assistant must not fabricate them or bypass the portal's role boundary.",
+      "allowed_role": "authority",
+      "denied_roles": ["tenant"],
+      "answer_should_exist": false,
+      "review_status": "reviewed",
+      "review_notes": "All current indexed chunks have empty ACL arrays; this case therefore tests the application permission boundary and corpus abstention, not a fabricated document ACL."
+    },
+    {
+      "id": "RG-010",
+      "question_type": "similar_document_confusion_case",
+      "question": "When the base PGLM text and a later clarification overlap, what later clarification says that renewal is treated as a fresh lease and authority depends on the renewal period?",
+      "expected_documents": [
+        {
+          "filename": "Clarification No 1 of 2018_1688.pdf",
+          "source_sha256": "390d47bc0eee9a091942f1b89f866fd638ba1dc44d69dec0d21159bbc9408552",
+          "pages": [9]
+        },
+        {
+          "filename": "PGLM 2015_Compilation.pdf",
+          "source_sha256": "3423714973f4c7edefe8728b5e06cd43e84b3ae1db55a63077756ec1bec5c3cd",
+          "pages": [18]
+        }
+      ],
+      "expected_pages": [9, 18],
+      "expected_supporting_fact": "Clarification 12 in the 2018 circular states that renewal can be treated as a fresh lease and that authority is determined from the renewal period without counting the earlier lease; the compilation contains the corresponding PGLM clarification text.",
+      "allowed_role": "authority",
+      "answer_should_exist": true,
+      "review_status": "reviewed",
+      "review_notes": "The evaluation checks document disambiguation: cite the clarification circular as the later clarification and use the compilation as corroborating policy context."
+    },
+    {
+      "id": "RG-011",
+      "question_type": "table_related_question",
+      "question": "For situation 1 in Appendix A of By-law No. 9, what is the charge per square metre per day for up to 15 days?",
+      "expected_documents": [
+        {
+          "filename": "Bylaw No. 9.pdf",
+          "source_sha256": "c5e1297053590d393e892cbe79d9262f29ac8cd455a9f82d8ce6e374f83cbccd",
+          "pages": [3]
+        }
+      ],
+      "expected_pages": [3],
+      "expected_supporting_fact": "Appendix A lists Rs. 1.00 per square metre per day for situation 1, for storage of building materials intended for approved repair/construction use, for up to 15 days.",
+      "allowed_role": "authority",
+      "answer_should_exist": true,
+      "review_status": "reviewed",
+      "review_notes": "The value was checked against the rendered page-3 table, not inferred from the OCR-like text extraction."
+    }
+  ]
+}
