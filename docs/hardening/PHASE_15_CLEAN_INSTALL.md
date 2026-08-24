@@ -1,8 +1,8 @@
 # Phase 15 — Clean install and reproducibility
 
-**Executed:** 2026-08-25 (local Windows validation)  
+**Executed:** 2026-08-25 (local Windows validation)
 **Scope:** disposable clone, package installation, frontend installation/build,
-documented checks, and isolated health/readiness smoke tests.  
+documented checks, and isolated health/readiness smoke tests.
 **Status:** **PARTIAL — installation and local smoke checks pass; the complete
 integration suite needs the approved test services and fixture bundle that are
 intentionally outside Git.**
