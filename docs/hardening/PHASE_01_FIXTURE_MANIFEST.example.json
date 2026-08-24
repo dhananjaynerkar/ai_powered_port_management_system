@@ -1,0 +1,52 @@
+{
+  "manifest_version": "phase-01-example-v1",
+  "status": "DO_NOT_EXECUTE",
+  "purpose": "Logical acceptance fixture shape only; placeholders are not operational identifiers.",
+  "approved_environment": {
+    "database_name": "<approved_acceptance_database>",
+    "connection_user": "<least_privilege_test_user>",
+    "database_must_not_equal": "portproject",
+    "fixture_sentinel": "<operator_supplied_sentinel>",
+    "tender_storage_path": "<fixture_workspace>/tender_workflows.json"
+  },
+  "principals": [
+    {"ref": "authority_do", "portal": "authority", "workflow_role": "DO", "source_row": "<sanitized_admin_user_and_role>"},
+    {"ref": "authority_no", "portal": "authority", "workflow_role": "NO", "source_row": "<sanitized_admin_user_and_role>"},
+    {"ref": "authority_ho", "portal": "authority", "workflow_role": "HO", "source_row": "<sanitized_admin_user_and_role>"},
+    {"ref": "tenant_one", "portal": "tenant", "workflow_role": null, "source_row": "<sanitized_applicant_registration>"}
+  ],
+  "isolation_principals": ["<principal_a>", "<principal_b>"],
+  "chat": [
+    {"ref": "private_empty", "owner": "<principal_a>", "messages": 0},
+    {"ref": "private_cited", "owner": "<principal_a>", "messages": "<user_and_assistant_messages_with_fixture_sources>"},
+    {"ref": "workflow_linked", "owner": "authority_do", "source_chat": "private_cited", "agenda_ref": "<agenda_ref>"}
+  ],
+  "agendas": [
+    {"ref": "do_draft", "state": "DO_DRAFT", "owner": "authority_do"},
+    {"ref": "submitted_to_no", "state": "SUBMITTED_TO_NO", "owner": "authority_no"},
+    {"ref": "submitted_to_ho", "state": "SUBMITTED_TO_HO", "owner": "authority_ho"},
+    {"ref": "returned_to_do", "state": "RETURNED_TO_DO", "owner": "authority_do"},
+    {"ref": "approved", "state": "APPROVED", "owner": "authority_ho"},
+    {"ref": "rejected", "state": "REJECTED", "owner": "authority_ho"}
+  ],
+  "billing": [
+    {"ref": "billing_complete", "source": "<approved_sanitized_billing_snapshot>", "expected": "prefill_and_prediction_succeed"},
+    {"ref": "billing_incomplete", "source": "<approved_sanitized_incomplete_snapshot>", "expected": "supported_validation_error"}
+  ],
+  "tender": {
+    "eligible_plot": "<approved_sanitized_vacant_plot>",
+    "checklist_key": "<approved_test_only_checklist_key>",
+    "source_snapshot": "<fixture_workspace>/tender_data2",
+    "workflow_state": "<fixture_workspace>/tender_workflows.json"
+  },
+  "reset": {
+    "database": "restore_sanitized_snapshot_or_recreate_application_schema_only",
+    "tender_state": "replace_fixture_workflows_json_with_known_empty_state",
+    "forbidden_targets": ["portproject", "production_public", "operational_tender_exports", "live_sessions"]
+  },
+  "secrets": {
+    "passwords": "provision_out_of_band; never commit",
+    "session_cookies": "never fixture or log",
+    "raw_source_exports": "must be sanitized and approved before copying"
+  }
+}
