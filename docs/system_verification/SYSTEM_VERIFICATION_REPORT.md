@@ -1,6 +1,6 @@
 # Complete end-to-end system verification report
 
-**Target:** `C:\Users\15dha\OneDrive\Desktop\data\portproject_rag`  
+**Target:** target checkout (local path redacted)
 **Audit date:** 2026-08-24  
 **Mode:** evidence-based, local-only, non-destructive acceptance audit
 

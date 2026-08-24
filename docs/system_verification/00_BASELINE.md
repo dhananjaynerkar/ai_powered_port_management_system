@@ -1,7 +1,7 @@
 # 00 — audit baseline
 
 **Audit date:** 2026-08-24  
-**Target:** `C:\Users\15dha\OneDrive\Desktop\data\portproject_rag`  
+**Target:** target checkout (local path redacted)
 **Audit mode:** local-only, read-only verification unless a pre-existing
 automated test uses an isolated temporary fixture.
 

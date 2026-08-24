@@ -19,7 +19,7 @@ Read these documents in order:
 ## Quick start
 
 ```powershell
-Set-Location C:\Users\15dha\OneDrive\Desktop\data\portproject_rag
+Set-Location <repo-root>
 .\.venv\Scripts\python.exe -m pip install -e .
 Set-Location .\web
 npm install

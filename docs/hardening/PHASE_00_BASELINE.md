@@ -10,7 +10,7 @@ operational record change was performed.
 
 | Check | Before | After |
 |---|---|---|
-| Target path | `C:\Users\15dha\OneDrive\Desktop\data\portproject_rag` | same |
+| Target path | target checkout (local path redacted) | same |
 | Target `.git` directory | absent | created |
 | `git rev-parse --show-toplevel` | incorrectly resolved to unrelated parent `C:/Users/15dha` | target-local repository |
 | Branch | parent checkout reported `main` | target `main` |

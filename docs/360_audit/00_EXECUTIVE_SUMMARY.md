@@ -3,7 +3,8 @@
 ## Scope
 
 This is an audit-only report created from the supplied audit prompt. It is based
-on the target checkout at C:\Users\15dha\OneDrive\Desktop\data\portproject_rag.
+on the target checkout. The local filesystem path is intentionally omitted from
+the public repository copy.
 The separate AI_PMS checkout was treated as a reference only and was not used
 as a runtime dependency.
 
@@ -67,4 +68,3 @@ incremental feature-boundary extraction.
 This audit created only documentation under this folder and preserved the
 existing source, API, SQL, database state, model settings, workflow behavior,
 artifacts, and reference checkout.
-
