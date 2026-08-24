@@ -131,36 +131,87 @@ def _settings() -> Settings:
 def _stats(settings: Settings) -> dict[str, int]:
     with connect(settings.database_url.unicode_string()) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(f"""SELECT COUNT(*), COALESCE(SUM(page_count), 0) FROM {settings.document_schema_name}.document_record d
-                WHERE EXISTS (SELECT 1 FROM {settings.vector_schema_name}.document_chunk c WHERE c.document_id=d.document_id)""")
+            cursor.execute(f"SELECT COALESCE(ingestion_state, 'pending'), COUNT(*) FROM {settings.document_schema_name}.document_record GROUP BY ingestion_state")
+            state_counts = {str(state): int(count) for state, count in cursor.fetchall()}
+            cursor.execute(f"""SELECT COUNT(DISTINCT d.document_id), COUNT(p.page_id)
+                FROM {settings.document_schema_name}.document_record d
+                LEFT JOIN {settings.schema_name}.document_page p ON p.document_id = d.document_id
+                WHERE d.ingestion_state = 'indexed'""")
             documents, pages = cursor.fetchone()
-            cursor.execute(f"""SELECT COUNT(*) FROM {settings.document_schema_name}.document_record d
-                WHERE NOT EXISTS (SELECT 1 FROM {settings.vector_schema_name}.document_chunk c WHERE c.document_id=d.document_id)""")
-            pending_documents = cursor.fetchone()[0]
-            cursor.execute(f"SELECT COUNT(*) FROM {settings.vector_schema_name}.document_chunk")
+            cursor.execute(f"""SELECT COUNT(*) FROM {settings.vector_schema_name}.document_chunk c
+                JOIN {settings.document_schema_name}.document_record d ON d.document_id = c.document_id
+                WHERE d.ingestion_state = 'indexed'""")
             chunks = cursor.fetchone()[0]
-            cursor.execute(f"SELECT COUNT(*) FROM {settings.vector_schema_name}.chunk_embedding WHERE embedding IS NOT NULL")
+            cursor.execute(f"""SELECT COUNT(*) FROM {settings.vector_schema_name}.chunk_embedding e
+                JOIN {settings.vector_schema_name}.document_chunk c ON c.chunk_id = e.chunk_id
+                JOIN {settings.document_schema_name}.document_record d ON d.document_id = c.document_id
+                WHERE d.ingestion_state = 'indexed' AND e.embedding IS NOT NULL""")
             vectors = cursor.fetchone()[0]
-    return {"documents": documents, "pages": int(pages), "pending_documents": pending_documents, "chunks": chunks, "vectors": vectors}
+    return {
+        "documents": int(documents),
+        "pages": int(pages),
+        "pending_documents": state_counts.get("pending", 0),
+        "processing_documents": state_counts.get("processing", 0),
+        "quarantined_documents": state_counts.get("quarantined", 0),
+        "failed_documents": state_counts.get("failed", 0),
+        "chunks": int(chunks),
+        "vectors": int(vectors),
+    }
 
 
 def _corpus_state(settings: Settings) -> dict[str, object]:
     with connect(settings.database_url.unicode_string()) as connection:
         with connection.cursor() as cursor:
             cursor.execute(f"""SELECT d.document_id, d.original_filename, d.page_count,
+                d.ingestion_state, d.ingestion_error,
                 COUNT(DISTINCT c.chunk_id), COUNT(DISTINCT e.chunk_id)
                 FROM {settings.document_schema_name}.document_record d
                 LEFT JOIN {settings.vector_schema_name}.document_chunk c ON c.document_id=d.document_id
                 LEFT JOIN {settings.vector_schema_name}.chunk_embedding e ON e.chunk_id=c.chunk_id
-                GROUP BY d.document_id, d.original_filename, d.page_count
+                GROUP BY d.document_id, d.original_filename, d.page_count, d.ingestion_state, d.ingestion_error
                 ORDER BY d.original_filename""")
             rows = cursor.fetchall()
+            cursor.execute(f"""SELECT
+                COUNT(*) FILTER (WHERE d.ingestion_state = 'indexed' AND NOT EXISTS (
+                    SELECT 1 FROM {settings.schema_name}.document_page p WHERE p.document_id = d.document_id
+                )),
+                COUNT(*) FILTER (WHERE d.ingestion_state = 'indexed' AND NOT EXISTS (
+                    SELECT 1 FROM {settings.vector_schema_name}.document_chunk c WHERE c.document_id = d.document_id
+                )),
+                (SELECT COUNT(*) FROM {settings.schema_name}.document_page p
+                 JOIN {settings.document_schema_name}.document_record d ON d.document_id = p.document_id
+                 WHERE d.ingestion_state = 'indexed' AND NOT EXISTS (
+                    SELECT 1 FROM {settings.vector_schema_name}.document_chunk c WHERE c.page_id = p.page_id
+                 )),
+                COUNT(*) FILTER (WHERE d.ingestion_state = 'indexed' AND EXISTS (
+                    SELECT 1 FROM {settings.vector_schema_name}.document_chunk c
+                    LEFT JOIN {settings.vector_schema_name}.chunk_embedding e ON e.chunk_id = c.chunk_id
+                    WHERE c.document_id = d.document_id AND e.chunk_id IS NULL
+                )),
+                COUNT(*) FILTER (WHERE d.ingestion_state = 'indexed' AND EXISTS (
+                    SELECT 1 FROM {settings.vector_schema_name}.document_chunk c
+                    WHERE c.document_id = d.document_id AND (c.page_number IS NULL OR c.page_number <= 0 OR c.acl_roles IS NULL)
+                )),
+                (SELECT COUNT(*) FROM {settings.vector_schema_name}.chunk_embedding e
+                 JOIN {settings.vector_schema_name}.document_chunk c ON c.chunk_id = e.chunk_id
+                 JOIN {settings.document_schema_name}.document_record d ON d.document_id = c.document_id
+                 WHERE d.ingestion_state = 'indexed' AND e.embedding IS NOT NULL AND vector_dims(e.embedding) <> %s)
+                FROM {settings.document_schema_name}.document_record d""", (settings.embedding_dimensions,))
+            invariant_row = cursor.fetchone() or (0, 0, 0, 0, 0, 0)
     return {
         **_stats(settings),
         "documents_state": [
-            {"document_id": str(row[0]), "filename": row[1], "pages": row[2], "chunks": row[3], "embeddings": row[4], "indexed": row[3] > 0 and row[3] == row[4]}
+            {"document_id": str(row[0]), "filename": row[1], "pages": row[2], "state": row[3], "reason": row[4], "chunks": row[5], "embeddings": row[6], "indexed": row[3] == "indexed" and row[5] > 0 and row[5] == row[6]}
             for row in rows
         ],
+        "invariants": {
+            "indexed_documents_without_pages": int(invariant_row[0]),
+            "indexed_documents_without_chunks": int(invariant_row[1]),
+            "indexed_pages_without_chunks": int(invariant_row[2]),
+            "indexed_chunks_without_embeddings": int(invariant_row[3]),
+            "indexed_chunks_without_page_or_acl_metadata": int(invariant_row[4]),
+            "indexed_embeddings_with_wrong_dimension": int(invariant_row[5]),
+        },
     }
 
 
@@ -945,13 +996,15 @@ def documents(limit: int = 100, user: PortalUser = Depends(current_user)) -> dic
     settings: Settings = app.state.settings
     with connect(settings.database_url.unicode_string()) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(f"""SELECT d.original_filename, d.page_count, d.classification, d.extraction_quality, COUNT(c.chunk_id)
+            cursor.execute(f"""SELECT d.original_filename, d.page_count, d.classification, d.extraction_quality,
+                    d.ingestion_state, d.ingestion_error, COUNT(c.chunk_id)
                 FROM {settings.document_schema_name}.document_record d
                 LEFT JOIN {settings.vector_schema_name}.document_chunk c ON c.document_id=d.document_id
-                GROUP BY d.document_id, d.original_filename, d.page_count, d.classification, d.extraction_quality
+                GROUP BY d.document_id, d.original_filename, d.page_count, d.classification, d.extraction_quality,
+                    d.ingestion_state, d.ingestion_error
                 ORDER BY d.original_filename LIMIT %s""", (min(limit, 200),))
             rows = cursor.fetchall()
-    return {"documents": [{"filename": r[0], "pages": r[1], "classification": r[2], "quality": r[3], "chunks": r[4]} for r in rows]}
+    return {"documents": [{"filename": r[0], "pages": r[1], "classification": r[2], "quality": r[3], "state": r[4], "reason": r[5], "chunks": r[6]} for r in rows]}
 
 
 @app.get("/api/authority/dashboard/metrics")

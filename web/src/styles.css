@@ -1383,7 +1383,7 @@ button {
 }
 .doc-row {
   display: grid;
-  grid-template-columns: 2.6fr 1.6fr 0.6fr 0.6fr 0.6fr;
+  grid-template-columns: 2.4fr 1.35fr 0.6fr 0.6fr 0.65fr 0.95fr;
   gap: 10px;
   min-height: 38px;
   align-items: center;
@@ -1412,6 +1412,10 @@ button {
   padding: 3px 6px;
   font-weight: bold;
 }
+.doc-row i.document-state.processing { color: #315f91; background: #edf5ff; border-color: #b8cce5; }
+.doc-row i.document-state.pending { color: #8a5a00; background: #fff9e8; border-color: #f0d08a; }
+.doc-row i.document-state.quarantined { color: #8a5a00; background: #fff3d5; border-color: #e9c66e; }
+.doc-row i.document-state.failed { color: #b42318; background: #fff2f2; border-color: #e4b7b7; }
 .registry footer {
   font-size: 10px;
   color: #4c627d;
@@ -2228,7 +2232,7 @@ button {
     display: none;
   }
   .doc-row {
-    grid-template-columns: 2.3fr 0.55fr 0.55fr 0.7fr;
+    grid-template-columns: 2fr 0.55fr 0.55fr 0.7fr 0.9fr;
   }
   .doc-row.headings span:nth-child(2) {
     display: none;
@@ -3731,6 +3735,9 @@ body.is-resizing-layout * {
 .corpus-status-button svg:first-child { width: 0.85rem; height: 0.85rem; }
 .corpus-status-button svg:last-child { width: 0.75rem; height: 0.75rem; }
 .corpus-status-control.pending .corpus-status-button { border-color: #f0d08a; background: #fff9e8; color: #8a5a00; }
+.corpus-status-control.processing .corpus-status-button { border-color: #b8cce5; background: #f2f7fd; color: #315f91; }
+.corpus-status-control.quarantined .corpus-status-button { border-color: #f0d08a; background: #fff9e8; color: #8a5a00; }
+.corpus-status-control.failed .corpus-status-button { border-color: #e4b7b7; background: #fff2f2; color: #b42318; }
 .corpus-status-control.unavailable .corpus-status-button { border-color: #e4b7b7; background: #fff2f2; color: #b42318; }
 .corpus-status-popover { position: absolute; z-index: 20; top: calc(100% + 0.55rem); right: 0; display: grid; width: min(19rem, calc(100vw - 2rem)); gap: 0.8rem; padding: 0.9rem; border: 1px solid #dce5ef; border-radius: 0.7rem; background: #fff; box-shadow: 0 12px 28px rgb(18 52 96 / 16%); text-align: left; }
 .corpus-status-popover header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.7rem; padding-bottom: 0.65rem; border-bottom: 1px solid #edf1f5; }

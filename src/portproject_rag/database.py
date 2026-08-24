@@ -32,10 +32,14 @@ def migration_statements(schema_name: str, embedding_dimensions: int) -> Sequenc
                 extraction_strategy text NOT NULL,
                 extraction_quality smallint NOT NULL CHECK (extraction_quality BETWEEN 0 AND 100),
                 source_metadata jsonb NOT NULL DEFAULT '{{}}'::jsonb,
+                ingestion_state text NOT NULL DEFAULT 'processing',
+                ingestion_error text,
                 created_at timestamptz NOT NULL DEFAULT now(),
                 updated_at timestamptz NOT NULL DEFAULT now()
             )
         """).format(schema=schema),
+        statement("ALTER TABLE {schema}.document ADD COLUMN IF NOT EXISTS ingestion_state text NOT NULL DEFAULT 'processing'").format(schema=schema),
+        statement("ALTER TABLE {schema}.document ADD COLUMN IF NOT EXISTS ingestion_error text").format(schema=schema),
         statement("""
             CREATE TABLE IF NOT EXISTS {schema}.document_page (
                 page_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -213,10 +217,23 @@ def migrate(settings: Settings) -> None:
             vector_schema = sql.Identifier(settings.vector_schema_name)
             cursor.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(document_schema))
             cursor.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(vector_schema))
+            # Existing rows predate the explicit state column. Their state can
+            # be backfilled deterministically from persisted chunk coverage;
+            # rows without chunks remain pending until an operator retries or
+            # quarantines them with an observed reason.
+            cursor.execute(sql.SQL("""
+                UPDATE {}.document d
+                SET ingestion_state = CASE
+                    WHEN EXISTS (SELECT 1 FROM {}.chunk c WHERE c.document_id = d.document_id) THEN 'indexed'
+                    ELSE 'pending'
+                END,
+                    updated_at = now()
+                WHERE d.ingestion_state = 'processing'
+            """).format(source, source))
             cursor.execute(sql.SQL("""CREATE OR REPLACE VIEW {}.document_record AS
                 SELECT document_id, source_path, original_filename, file_sha256, file_size_bytes,
                        page_count, classification, extraction_strategy, extraction_quality,
-                       source_metadata, created_at, updated_at
+                       source_metadata, created_at, updated_at, ingestion_state, ingestion_error
                 FROM {}.document""").format(document_schema, source))
             cursor.execute(sql.SQL("""CREATE OR REPLACE VIEW {}.document_chunk AS
                 SELECT c.chunk_id, c.document_id, c.page_id, c.chunk_index, c.chunk_type,

@@ -42,6 +42,9 @@ type User = { user_id: string; username: string; name: string; role: Role; role_
 type Corpus = {
   documents: number;
   pending_documents?: number;
+  processing_documents?: number;
+  quarantined_documents?: number;
+  failed_documents?: number;
   pages: number;
   chunks: number;
   vectors: number;
@@ -101,6 +104,8 @@ type Document = {
   classification: string;
   quality: number;
   chunks: number;
+  state?: "indexed" | "processing" | "pending" | "quarantined" | "failed" | string;
+  reason?: string | null;
 };
 type TenantRecord = {
   tenant_id: string;
@@ -143,7 +148,17 @@ type ConversationContextMenu = {
   x: number;
   y: number;
 };
-type CorpusState = Corpus & { documents_state: { document_id: string; filename: string; pages: number; chunks: number; embeddings: number }[] };
+type CorpusState = Corpus & {
+  documents_state: { document_id: string; filename: string; pages: number; chunks: number; embeddings: number; state: string; reason?: string | null; indexed: boolean }[];
+  invariants?: {
+    indexed_documents_without_pages: number;
+    indexed_documents_without_chunks: number;
+    indexed_pages_without_chunks: number;
+    indexed_chunks_without_embeddings: number;
+    indexed_chunks_without_page_or_acl_metadata: number;
+    indexed_embeddings_with_wrong_dimension: number;
+  };
+};
 type LocalLlmCatalog = { models: string[]; default_model: string };
 type Officer = { principal_id: string; name: string; username: string; role: "DO" | "NO" | "HO"; role_title: string };
 type ContextOption = { value: string; label: string; available: boolean };
@@ -1291,11 +1306,17 @@ function Dashboard({
     return () => { cancelled = true; };
   }, [tab]);
   const pendingDocuments = headerCorpus?.pending_documents || 0;
-  const corpusStatusTone = !headerCorpus ? "unavailable" : pendingDocuments ? "pending" : "ready";
+  const corpusAttention = !headerCorpus ? null : [
+    { key: "failed_documents", tone: "failed", label: "failed" },
+    { key: "quarantined_documents", tone: "quarantined", label: "quarantined" },
+    { key: "processing_documents", tone: "processing", label: "processing" },
+    { key: "pending_documents", tone: "pending", label: "pending" },
+  ].map((item) => ({ ...item, count: Number(headerCorpus[item.key as keyof Corpus] || 0) })).find((item) => item.count > 0);
+  const corpusStatusTone = !headerCorpus ? "unavailable" : corpusAttention?.tone || "ready";
   const corpusStatusLabel = !headerCorpus
     ? "Documents unavailable"
-    : pendingDocuments
-      ? `Documents · ${pendingDocuments} pending`
+    : corpusAttention
+      ? `Documents · ${corpusAttention.count} ${corpusAttention.label}`
       : `Documents ready · ${headerCorpus.documents}`;
   return (
     <div className={`${tab === "ai" ? "app-shell ai-shell" : "app-shell"} reference-shell${authority ? " authority-shell" : " tenant-shell"}`} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
@@ -1374,8 +1395,8 @@ function Dashboard({
             <div className={`corpus-status-control ${corpusStatusTone}`}>
               <button type="button" className="corpus-status-button" aria-expanded={showCorpusStatus} onClick={() => setShowCorpusStatus((value) => !value)}><ShieldCheck/><span>{corpusStatusLabel}</span><ChevronDown/></button>
               {showCorpusStatus && <section className="corpus-status-popover" role="dialog" aria-label="Document corpus status">
-                <header><div><b>Document corpus</b><small>{corpusStatusTone === "ready" ? "Answers are grounded in indexed documents." : corpusStatusTone === "pending" ? "Some documents are still being prepared." : "Document status is unavailable."}</small></div><button type="button" aria-label="Close document status" onClick={() => setShowCorpusStatus(false)}><X/></button></header>
-                {headerCorpus ? <dl><div><dt>Documents</dt><dd>{headerCorpus.documents.toLocaleString()}</dd></div><div><dt>Chunks</dt><dd>{headerCorpus.chunks.toLocaleString()}</dd></div><div><dt>Embeddings</dt><dd>{headerCorpus.vectors.toLocaleString()}</dd></div><div><dt>Awaiting extraction</dt><dd>{pendingDocuments.toLocaleString()}</dd></div></dl> : <p className="corpus-status-empty">Unable to load live document status.</p>}
+                <header><div><b>Document corpus</b><small>{corpusStatusTone === "ready" ? "Answers are grounded in indexed documents." : corpusStatusTone === "quarantined" ? "Some documents need extraction review." : corpusStatusTone === "failed" ? "Some documents failed processing." : corpusStatusTone === "processing" ? "Some documents are still processing." : corpusStatusTone === "pending" ? "Some documents are awaiting processing." : "Document status is unavailable."}</small></div><button type="button" aria-label="Close document status" onClick={() => setShowCorpusStatus(false)}><X/></button></header>
+                {headerCorpus ? <dl><div><dt>Indexed</dt><dd>{headerCorpus.documents.toLocaleString()}</dd></div><div><dt>Chunks</dt><dd>{headerCorpus.chunks.toLocaleString()}</dd></div><div><dt>Embeddings</dt><dd>{headerCorpus.vectors.toLocaleString()}</dd></div><div><dt>Processing</dt><dd>{(headerCorpus.processing_documents || 0).toLocaleString()}</dd></div><div><dt>Pending</dt><dd>{pendingDocuments.toLocaleString()}</dd></div><div><dt>Quarantined</dt><dd>{(headerCorpus.quarantined_documents || 0).toLocaleString()}</dd></div><div><dt>Failed</dt><dd>{(headerCorpus.failed_documents || 0).toLocaleString()}</dd></div></dl> : <p className="corpus-status-empty">Unable to load live document status.</p>}
                 <button type="button" className="corpus-manage-button" onClick={() => { setShowCorpusStatus(false); target("documents"); }}><CloudUpload/>Manage documents</button>
               </section>}
             </div>
@@ -1914,7 +1935,8 @@ function Documents({ authority }: { authority: boolean }) {
           <span role="columnheader">CLASSIFICATION</span>
           <span role="columnheader">PAGES</span>
           <span role="columnheader">CHUNKS</span>
-          <span role="columnheader">QUALITY</span>
+        <span role="columnheader">QUALITY</span>
+        <span role="columnheader">INGESTION STATE</span>
         </div>
         {documentsLoading ? <DataState tone="loading" title="Loading indexed documents" detail="Retrieving document and extraction details." /> : documentsError ? <DataState tone="error" title="Unable to load indexed documents." detail="The document list could not be retrieved. Refresh and try again." /> : rows.map((d) => (
           <div className="doc-row" role="row" key={d.filename}>
@@ -1927,6 +1949,7 @@ function Documents({ authority }: { authority: boolean }) {
             <span role="cell">
               <i>{d.quality}%</i>
             </span>
+            <span role="cell"><i className={`document-state ${d.state || "pending"}`} title={d.reason || undefined}>{d.state || "pending"}</i></span>
           </div>
         ))}
         {!documentsLoading && !documentsError && !rows.length && <DataState tone="empty" title="No documents match this search." detail="Try a different filename or classification." />}
@@ -2063,7 +2086,7 @@ function Assistant({ user }: { user: User }) {
       const [chat, corpus, models, workflow, directory] = await Promise.all(requests);
       setSessions(chat.sessions);
       setCorpusState(corpus);
-      setDocuments(corpus.documents_state.map((item: any) => ({ filename: item.filename, pages: item.pages, chunks: item.chunks, classification: "indexed", quality: item.embeddings === item.chunks ? 100 : 0 })));
+      setDocuments(corpus.documents_state.map((item: any) => ({ filename: item.filename, pages: item.pages, chunks: item.chunks, classification: item.state, quality: item.embeddings === item.chunks ? 100 : 0, state: item.state, reason: item.reason })));
       setLocalLlmCatalog(models);
       setLlmModel((current) => current && models.models.includes(current) ? current : models.default_model);
       if (workflow) {
@@ -2406,7 +2429,7 @@ function Assistant({ user }: { user: User }) {
             <div className="workflow-header-actions"><button type="button" className="draft-control" onClick={() => setShowDraft((value) => !value)}><FileText/>View official draft · v{agenda.editing_version}</button><button type="button" className="workflow-details-toggle" aria-expanded={showWorkflowDetails} onClick={() => setShowWorkflowDetails((value) => !value)}><FileText/>Details &amp; handoff</button></div>
           </> : <><div><b>{tab === "assistant" ? activeSession?.title || "New conversation" : "Agenda workflow"}</b><span>{tab === "assistant" ? activeSession ? `Updated ${formatRelativeConversationTime(activeSession.updated_at)}` : "Ask about indexed port documents." : "Select an agenda to view its workflow and messages."}</span></div>{tab === "assistant" && <div className="chat-header-actions"><button type="button" className="chat-actions-trigger" aria-expanded={showActions} aria-controls="assistant-actions" onClick={() => setShowActions((value) => !value)}><MoreHorizontal/>Actions</button></div>}</>}
         </header>
-        {showDocuments && <div className="document-popover"><b>Live indexed documents</b><button onClick={() => setShowDocuments(false)}>Close</button>{documents.map((doc) => <span key={doc.filename}>{doc.filename} · {doc.pages} pages · {doc.chunks} chunks</span>)}</div>}
+        {showDocuments && <div className="document-popover"><b>Corpus documents</b><button onClick={() => setShowDocuments(false)}>Close</button>{documents.map((doc) => <span key={doc.filename}>{doc.filename} · {doc.state || "pending"} · {doc.pages} pages · {doc.chunks} chunks{doc.reason ? ` · ${doc.reason}` : ""}</span>)}</div>}
         {tab === "assistant" && showActions && <aside id="assistant-actions" className="quick-actions-drawer" aria-label="Quick actions">
           <header><div><b>Quick actions</b><span>Actions for this conversation</span></div><button type="button" aria-label="Close actions" onClick={() => setShowActions(false)}><X/></button></header>
           {user.role === "authority" && <section><button className="quick-primary" disabled={!canCreateAgenda} title={agendaDisabledReason} onClick={forwardAgenda}><CalendarDays/>Create agenda</button><p>{agendaDisabledReason}</p></section>}

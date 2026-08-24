@@ -1,3 +1,4 @@
+from portproject_rag.ingestion import _quarantine_reason
 from portproject_rag.inspection import PageProfile
 from portproject_rag.strategy import (
     Capabilities,
@@ -23,6 +24,10 @@ def test_scanned_page_selects_ocr_when_capability_appears() -> None:
 
     assert selected.strategy_id == "ocr_page"
     assert fallback is not None and fallback.strategy_id == "quarantine"
+
+
+def test_ocr_required_without_text_is_explicitly_quarantined() -> None:
+    assert _quarantine_reason("OCR_REQUIRED", None) == "OCR_PRODUCED_NO_USABLE_TEXT"
 
 
 def test_poor_native_page_does_not_repeat_failed_extraction_without_fallback() -> None:

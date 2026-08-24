@@ -45,6 +45,8 @@ def _ingest(args: argparse.Namespace) -> None:
     print(f"documents_inserted={result.documents_inserted}")
     print(f"documents_skipped={result.documents_skipped}")
     print(f"chunks_inserted={result.chunks_inserted}")
+    print(f"quarantined_documents={result.quarantined_documents}")
+    print(f"failed_documents={result.failed_documents}")
     print(f"duration_ms={result.duration_ms}")
 
 

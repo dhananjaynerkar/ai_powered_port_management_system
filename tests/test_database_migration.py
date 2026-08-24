@@ -13,6 +13,13 @@ def test_schema_identifier_never_uses_embedding_dimension() -> None:
     assert "1024.chunk" not in rendered
 
 
+def test_documents_have_explicit_ingestion_state_and_reason() -> None:
+    rendered = _render("rag", 1024)
+
+    assert "ingestion_state text NOT NULL DEFAULT 'processing'" in rendered
+    assert "ingestion_error text" in rendered
+
+
 def test_changing_dimension_does_not_change_schema_identifier() -> None:
     rendered = _render("rag", 768)
 
