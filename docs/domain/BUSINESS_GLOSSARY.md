@@ -41,4 +41,3 @@ The API retains the historical response keys `tenancy_lifecycle_breakdown` and
 definitions are intentionally more precise: **Derived tenure classification**
 and **Plot status and vacancy classification**. The keys must not be read as
 proof of the corresponding business concepts.
-

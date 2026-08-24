@@ -31,4 +31,3 @@ schema does not prove the business interpretation:
   values;
 - the official business meaning of status codes beyond the labels stored in
   `public.m_property_status`.
-

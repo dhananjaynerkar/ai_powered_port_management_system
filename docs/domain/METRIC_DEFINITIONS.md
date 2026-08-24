@@ -48,4 +48,3 @@ are diagnostics and are not silently subtracted from the headline metrics.
 4. Any change from “Not vacant” to “Occupied”, or from “Derived tenure
    classification” to “Active tenancy”, requires documented domain-owner
    sign-off and a separate migration/test review.
-
