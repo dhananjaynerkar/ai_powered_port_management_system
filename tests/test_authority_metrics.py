@@ -47,7 +47,8 @@ def test_authority_metrics_reconcile_with_live_plot_and_mapping_rows() -> None:
     assert {item["code"]: item["name"] for item in payload["plot_status_breakdown"] if item["code"] in {"A", "V", "RG"}} == dict(status_rows)
     assert payload["total_land"]["sqm"] == f"{float(plot_area):,.2f} sq.m"
     assert not {item["name"] for item in payload["plot_status_breakdown"]} & {"Occupied", "Vacant", "Pending"}
-    assert {item["name"] for item in payload["land_occupancy_breakdown"]} >= {"Occupied", "Vacant", "Registered"}
+    assert {item["name"] for item in payload["land_occupancy_breakdown"]} >= {"Not vacant", "Vacant", "Registered"}
+    assert "not a verified business synonym for occupied" in payload["land_occupancy_definition_source"]
 
 
 def test_authority_metrics_keep_lease_and_tenant_dimensions_separate() -> None:
@@ -67,6 +68,8 @@ def test_authority_metrics_keep_lease_and_tenant_dimensions_separate() -> None:
     assert "Joint-Tenancy" not in lease_names
     assert "Yearly" not in lease_names
     assert payload["tenancy_definition_source"].startswith("COUNT(public.applicant_property_mapping)")
+    assert payload["tenant_terminology"]["lifecycle_records"]["label"] == "Derived tenure classifications"
+    assert "not a canonical lifecycle status" in payload["tenancy_lifecycle_definition_source"]
 
 
 def test_date_quality_is_reported_without_rewriting_source_values() -> None:

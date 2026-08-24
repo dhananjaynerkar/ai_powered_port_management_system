@@ -2,11 +2,15 @@
 
 ## Dashboard metric contract
 
+The canonical display vocabulary and calculation contract is maintained in
+[`docs/domain/BUSINESS_GLOSSARY.md`](../domain/BUSINESS_GLOSSARY.md) and
+[`docs/domain/METRIC_DEFINITIONS.md`](../domain/METRIC_DEFINITIONS.md).
+
 The Authority dashboard route is GET /api/authority/dashboard/metrics and calls
 _authority_land_metrics. It reads public.plot for total plot count/area,
 public.m_property_status for status labels, public.plot.is_vacant for vacancy,
-and public.applicant_property_mapping plus applicant_registration for tenancy
-and quality dimensions.
+and public.applicant_property_mapping plus applicant_registration for mapping
+and applicant dimensions, plus quality dimensions.
 
 Returned dimensions include plot_status_breakdown, vacancy_breakdown,
 land_occupancy_breakdown, tenancy_lifecycle_breakdown,
@@ -15,9 +19,11 @@ tenant_structure_breakdown, billing_periodicity_breakdown, allotment_breakdown,
 tenant_terminology, and data_quality.
 
 The code deliberately keeps status, lease type, tenant structure, and billing
-periodicity separate. Occupancy classification is derived as RG first, then
-is_vacant true/false, then unclassified. Business confirmation of that mapping
-is required before changing labels.
+periodicity separate. Plot status/vacancy classification is derived as RG
+first, then is_vacant true/false, then unclassified. The false branch is shown
+as “Not vacant”, not “Occupied”, because the inspected source does not prove
+those terms are equivalent. Business confirmation is required before changing
+that label or treating tenancy_type-derived classifications as lifecycle state.
 
 ## Tenant record meaning
 
@@ -47,4 +53,3 @@ filtering, page clamping, and invalid dates.
 - Table load/performance at much larger volumes is NOT MEASURED.
 - Tenant detail route/click-through is not present in the inspected API map.
 - Business definitions for status code A/V/RG require domain-owner confirmation.
-

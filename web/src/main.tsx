@@ -1362,12 +1362,12 @@ function Dashboard({
           ) : tab === "overview" ? (
             <div className="page-shell-title dashboard-page-title">
               <h1>Dashboard</h1>
-              <p>Land and tenancy overview</p>
+              <p>Land and applicant-property overview</p>
             </div>
           ) : (
             <div className="page-shell-title tenant-page-title">
               <h1>{authority ? "Tenants" : "Document Library"}</h1>
-              <p>{authority ? "Search and review registered tenants and tenancies" : "Browse indexed port documents and extraction status"}</p>
+              <p>{authority ? "Search and review applicant-property mapping records" : "Browse indexed port documents and extraction status"}</p>
             </div>
           )}
           <div className="app-top-right">
@@ -1503,7 +1503,7 @@ function Overview({ authority }: { authority: boolean }) {
   ];
   return (
     <>
-      <section className="page-intro dashboard-intro"><div><span className="eyebrow">Authority operations</span><h2>Land and tenancy overview</h2><p>Live distribution across plot status, explicit vacancy, and applicant-property mapping records.</p></div><span className="data-note">Updated from PMS database</span></section>
+      <section className="page-intro dashboard-intro"><div><span className="eyebrow">Authority operations</span><h2>Land and applicant-property overview</h2><p>Live distribution across plot status, explicit vacancy, and applicant-property mapping records.</p></div><span className="data-note">Updated from PMS database</span></section>
       <section className="kpis">
         {kpis.map(([label, value, sub, icon], i) => (
           <article key={i}>
@@ -1523,15 +1523,15 @@ function Overview({ authority }: { authority: boolean }) {
           entries={data?.plot_status_breakdown ?? []}
         />
         <Donut
-          title="Land occupancy"
-          subtitle="Exclusive land view using plot status and the vacancy flag"
+          title="Plot status and vacancy classification"
+          subtitle="Source-derived view: status RG first, then public.plot.is_vacant"
           centerValue={data?.total_land.hectares ?? "—"}
           centerLabel="Total"
           entries={data?.land_occupancy_breakdown ?? []}
         />
         <Chart
-          title="Tenancy status"
-          subtitle={`${data?.tenant_terminology?.lifecycle_records.count.toLocaleString() ?? "—"} ${data?.tenant_terminology?.lifecycle_records.label.toLowerCase() ?? "tenancy lifecycle records (derived)"}`}
+          title="Derived tenure classification"
+          subtitle={`${data?.tenant_terminology?.lifecycle_records.count.toLocaleString() ?? "—"} ${data?.tenant_terminology?.lifecycle_records.label.toLowerCase() ?? "derived tenure classifications"}; not an active-tenancy status`}
           entries={data?.tenancy_lifecycle_breakdown ?? []}
         />
         <Chart

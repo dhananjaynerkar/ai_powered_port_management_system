@@ -389,8 +389,8 @@ def _tenant_terminology(cursor: Any) -> dict[str, object]:
         },
         "lifecycle_records": {
             "count": mapping_count,
-            "label": "Tenancy lifecycle records (derived)",
-            "definition": "Applicant-property mapping records classified from tenancy_type; the database does not expose a canonical active-tenancy master field here.",
+            "label": "Derived tenure classifications",
+            "definition": "Applicant-property mapping records classified from tenancy_type using the application rule for expired/exipred values; this is not a source lifecycle or active-tenancy status.",
         },
     }
 
@@ -433,7 +433,7 @@ def _authority_land_metrics(settings: Settings) -> dict[str, object]:
                     SELECT CASE
                         WHEN status = 'RG' THEN 'Registered'
                         WHEN is_vacant IS TRUE THEN 'Vacant'
-                        WHEN is_vacant IS FALSE THEN 'Occupied'
+                        WHEN is_vacant IS FALSE THEN 'Not vacant'
                         ELSE 'Unclassified'
                     END AS category, area
                     FROM public.plot
@@ -442,7 +442,7 @@ def _authority_land_metrics(settings: Settings) -> dict[str, object]:
                 FROM classified
                 GROUP BY category
                 ORDER BY CASE category
-                    WHEN 'Occupied' THEN 1
+                    WHEN 'Not vacant' THEN 1
                     WHEN 'Vacant' THEN 2
                     WHEN 'Registered' THEN 3
                     ELSE 4
@@ -559,9 +559,9 @@ def _authority_land_metrics(settings: Settings) -> dict[str, object]:
         "tenant_terminology": tenant_terminology,
         "status_definition_source": "public.m_property_status joined to public.plot.status",
         "vacancy_definition_source": "public.plot.is_vacant",
-        "land_occupancy_definition_source": "Exclusive public.plot view: RG status first, then is_vacant=true/false, then unclassified",
+        "land_occupancy_definition_source": "Exclusive public.plot classification: status=RG first, then is_vacant=true/false, then unclassified; 'Not vacant' is not a verified business synonym for occupied",
         "tenancy_definition_source": "COUNT(public.applicant_property_mapping) mapping records; not a canonical tenant count",
-        "tenancy_lifecycle_definition_source": "Derived from public.applicant_property_mapping.tenancy_type; values containing expired or source typo exipred are Expired",
+        "tenancy_lifecycle_definition_source": "Derived tenure classification from public.applicant_property_mapping.tenancy_type; values containing expired or source typo exipred are Expired, and this is not a canonical lifecycle status",
         "data_quality": {
             "mapping_records": _as_int(quality[0]),
             "matched_applicants": _as_int(quality[1]),
