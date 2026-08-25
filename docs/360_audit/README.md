@@ -1,5 +1,7 @@
 # 360-degree audit package
 
+**Status: HISTORICAL — NOT CURRENT SOURCE OF TRUTH**
+
 This folder is an audit-only deliverable. It does not authorize or contain
 application refactoring.
 

@@ -11,12 +11,27 @@ reference project only and is not a runtime dependency.
 Read these documents in order:
 
 - [Architecture](docs/ARCHITECTURE.md) — verified components, data flows, and decisions.
+- [Diagrams](docs/DIAGRAMS.md) — versioned architecture, RAG, auth, workflow, billing, and tender diagrams.
 - [Operations](docs/OPERATIONS.md) — setup, start, readiness, and troubleshooting.
 - [API reference](docs/API_REFERENCE.md) — routes, authentication, and contracts.
+- [Database](docs/DATABASE.md) — source-system versus application-owned data.
+- [RAG system](docs/RAG_SYSTEM.md) — ingestion, retrieval, guardrails, and citations.
+- [Security](docs/SECURITY.md) — deployment modes, sessions, authorization, and data boundaries.
+- [Workflow](docs/WORKFLOW.md) — private chat, official agendas, ownership, and transitions.
+- [Billing](docs/BILLING.md) — dynamic prefill, forecast artifact, and deterministic formulas.
+- [Tender](docs/TENDER.md) — source-backed tender state machine and JSON persistence boundary.
+- [Testing and evaluation](docs/TESTING_AND_EVALUATION.md) — regression, RAG, and acceptance evidence.
+- [Backup and recovery](docs/BACKUP_AND_RECOVERY.md) — state inventory and restore boundary.
 - [Project map](docs/PROJECT_MAP.md) — major folders and source-file ownership.
-- [Audit](docs/AUDIT_2026-08-24.md) — verified strengths, risks, and deliberately deferred work.
+- [Production readiness](docs/PRODUCTION_READINESS.md) — current readiness levels and open promotion gates.
+- [Interview defense guide](docs/INTERVIEW_DEFENSE_GUIDE.md) — accurate project explanations and trade-offs.
+- [Phase 17 documentation evidence](docs/hardening/PHASE_17_DOCUMENTATION.md) — source reconciliation and documentation verification.
 - [Security gate](docs/hardening/PHASE_02_SECURITY.md) — deployment modes, session transport, and credential-compatibility boundaries.
 - [Backup and recovery drill](docs/hardening/PHASE_03_BACKUP_RESTORE.md) — isolated restore evidence and remaining data-recovery decisions.
+
+Phase reports in `docs/hardening/` are evidence records for their named phase.
+Older audit/system-verification documents are historical; use the current
+documents above as the source of truth.
 
 ## Quick start
 
@@ -79,6 +94,5 @@ reliable native text.
 No cloud model fallback is configured. Retrieval uses PostgreSQL full-text and
 pgvector cosine search with rank fusion and page-level citations. Portal
 sessions are opaque HTTP-only cookies; only token hashes are stored. See
-[Architecture](docs/ARCHITECTURE.md#security-and-permission-boundary) and
-[Audit](docs/AUDIT_2026-08-24.md) for the verified local-development and
-production deployment constraints.
+[Security](docs/SECURITY.md), [RAG system](docs/RAG_SYSTEM.md), and
+[Production readiness](docs/PRODUCTION_READINESS.md) for current constraints.

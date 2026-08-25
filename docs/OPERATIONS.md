@@ -1,5 +1,7 @@
 # Operations guide
 
+**Status: CURRENT SOURCE OF TRUTH**
+
 ## Supported local environment
 
 - Windows PowerShell
@@ -17,18 +19,11 @@ at `127.0.0.1:5173`.
 ```powershell
 Set-Location <repo-root>
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 Set-Location web
 npm ci
 Set-Location ..
 Copy-Item .env.example .env
-```
-
-For the documented test and lint commands, install the development extra:
-
-```powershell
-Set-Location <repo-root>
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
 The optional billing-training dependencies are not required for the portal or
@@ -78,6 +73,12 @@ Always use the project virtual environment for Python checks:
 Set-Location web
 npm run build
 ```
+
+For database ownership, source relations, and recovery boundaries, use
+[DATABASE.md](DATABASE.md) and [BACKUP_AND_RECOVERY.md](BACKUP_AND_RECOVERY.md).
+For security-sensitive deployment settings, use [SECURITY.md](SECURITY.md) and
+the Phase 02 security report; do not infer production safety from a local
+`/health` response.
 
 `pyproject.toml` also declares `src` as a pytest import path, but this does not
 replace installing the project dependencies in the supported `.venv`.

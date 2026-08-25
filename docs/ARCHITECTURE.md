@@ -1,5 +1,7 @@
 # Architecture
 
+**Status: CURRENT SOURCE OF TRUTH**
+
 ## Scope
 
 PortProject RAG Portal is a local Windows-oriented React + FastAPI application.
@@ -18,7 +20,7 @@ FastAPI (:8001, loopback only)
         |-- rag.*                 portal sessions, chats, agendas, chunks, audit events
         |-- pms_doc / pms_vector  read views over rag document/chunk data
         v
-PostgreSQL + pgvector (:AND5432)
+PostgreSQL + pgvector (:5432)
 
 FastAPI --> Ollama (/api/embed, /api/chat, /api/tags)
 FastAPI --> local CrossEncoder reranker
@@ -105,6 +107,12 @@ Tender publication loads only eligible vacant-plot exports and checklist
 evidence. It persists workflow records in the target project’s
 `tender_workflow/data/tender_workflows.json` and produces draft PDFs. It does
 not infer missing commercial approvals.
+
+For rendered diagrams, see [DIAGRAMS.md](DIAGRAMS.md). Detailed ownership,
+security, workflow, billing, tender, and recovery contracts are maintained in
+[DATABASE.md](DATABASE.md), [SECURITY.md](SECURITY.md), [WORKFLOW.md](WORKFLOW.md),
+[BILLING.md](BILLING.md), [TENDER.md](TENDER.md), and
+[BACKUP_AND_RECOVERY.md](BACKUP_AND_RECOVERY.md).
 
 ## Database ownership
 

@@ -1,5 +1,7 @@
 # Project map
 
+**Status: CURRENT SOURCE OF TRUTH**
+
 This map covers maintained source, configuration, runtime scripts, tests, and
 generated-output boundaries. It intentionally does not describe every copied
 PDF, CSV, or compiled asset as application source code.
@@ -42,6 +44,7 @@ PDF, CSV, or compiled asset as application source code.
 | Path | Responsibility | Current maintenance boundary |
 | --- | --- | --- |
 | `web/src/main.tsx` | React application shell, authentication screens, dashboard, tenant table, chat, agenda workflow, and feature modals. | This is the largest maintained source file. Do not split it opportunistically; extract a tested component only with a defined feature boundary. |
+| `web/src/shared/utils.ts` | Pure shared formatting, status, width, tenant, conversation, and pagination helpers extracted in Phase 16. | Keep browser-independent helpers here; do not move stateful components into this module. |
 | `web/src/styles.css` | Design tokens, responsive layout, component styles, states, splitters, and feature-modal styles. | Keep shared tokens near the top; avoid page-specific overrides that change unrelated layouts. |
 | `web/vite.config.ts` | Vite development/build configuration. |
 | `web/package.json` | React/Vite/TypeScript dependencies and build scripts. |
@@ -58,3 +61,21 @@ PDF, CSV, or compiled asset as application source code.
 | `tests/test_inspection.py`, `test_strategy.py`, `test_live_corpus_evaluation.py` | Extraction quality and adaptive retrieval behavior. |
 | `tests/test_billing_service.py`, `test_tender_workflow.py` | Source-backed billing and tender workflow behavior. |
 | `docs/` | Architecture, operations, API contract, integration notes, evaluations, and audit records. |
+
+## Current documentation hierarchy
+
+| Document | Source-of-truth responsibility |
+| --- | --- |
+| `ARCHITECTURE.md`, `DIAGRAMS.md` | Runtime topology and data flows |
+| `DATABASE.md`, `SECURITY.md` | Ownership, session, authorization, and deployment boundaries |
+| `RAG_SYSTEM.md`, `WORKFLOW.md` | Evidence pipeline and official agenda semantics |
+| `BILLING.md`, `TENDER.md` | Feature-specific source and persistence contracts |
+| `OPERATIONS.md`, `BACKUP_AND_RECOVERY.md` | Local operation and recovery boundaries |
+| `API_REFERENCE.md`, `TESTING_AND_EVALUATION.md` | API and verification contracts |
+| `PRODUCTION_READINESS.md` | Current promotion status and residual gates |
+| `INTERVIEW_DEFENSE_GUIDE.md` | Accurate technical explanations and limitations |
+
+Files under `docs/hardening/` are phase evidence reports. Files under
+`docs/360_audit/` and `docs/system_verification/` are historical audit material
+and are not current source of truth unless a current document explicitly links
+to a verified claim.

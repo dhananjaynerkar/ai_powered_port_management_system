@@ -1,5 +1,7 @@
 # Complete system verification
 
+**Status: HISTORICAL — NOT CURRENT SOURCE OF TRUTH**
+
 This folder contains the evidence-based acceptance audit requested for the
 `portproject_rag` checkout. It is deliberately separate from application
 source and from the historical audit notes in `docs/360_audit/`.

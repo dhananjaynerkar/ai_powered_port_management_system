@@ -1,5 +1,7 @@
 # API reference
 
+**Status: CURRENT SOURCE OF TRUTH**
+
 All API paths below are implemented in `src/portproject_rag/api.py`. Protected
 routes require the opaque `portproject_session` cookie. Authority routes also
 require an Authority database identity; agenda routes validate the active
@@ -15,8 +17,8 @@ require an Authority database identity; agenda routes validate the active
 | POST | `/api/v1/auth/bootstrap` | Public | Intentionally returns `410`; existing database accounts must sign in. |
 | POST | `/api/authority/login` | Public | Authority authentication. |
 | POST | `/tenant/api/auth/login` | Public | Tenant authentication. |
-| POST | `/api/v1/auth/logout` and aliases | Signed in | Ends the current session. |
-| GET | `/api/v1/auth/me` and aliases | Signed in | Current user display payload. |
+| POST | `/api/v1/auth/logout`, `/api/authority/logout`, `/tenant/api/auth/logout` | Signed in | Ends the current session. |
+| GET | `/api/v1/auth/me`, `/api/authority/me`, `/tenant/api/auth/me` | Signed in | Current user display payload. |
 
 Login request body: `{ "username": "...", "password": "..." }`.
 
@@ -48,8 +50,8 @@ the endpoint's source-column allowlist.
 | --- | --- | --- | --- |
 | POST | `/api/v1/chat/sessions` | Signed in | Creates a private conversation. |
 | GET | `/api/v1/chat/sessions` | Signed in | Lists the current principal's conversations. |
-| GET | `/api/v1/chat/sessions/{id}` | Owner | Reads one private conversation. |
-| DELETE | `/api/v1/chat/sessions/{id}` | Owner | Deletes an unshared private conversation; returns `409` if workflow-linked. |
+| GET | `/api/v1/chat/sessions/{chat_session_id}` | Owner | Reads one private conversation. |
+| DELETE | `/api/v1/chat/sessions/{chat_session_id}` | Owner | Deletes an unshared private conversation; returns `409` if workflow-linked. |
 | POST | `/api/v1/policy/query`, `/api/v1/query`, `/api/v1/chat` | Signed in | RAG answer with citations and optional chat persistence. |
 
 Question payload keys are `question`, optional `limit` (1–20), optional
@@ -64,10 +66,10 @@ and timing fields.
 | GET/POST | `/api/v1/workflow/drafts` | Signed in | Personal workflow drafts. |
 | GET | `/api/v1/workflow/officers` | Authority | Active DO/NO/HO directory. |
 | GET/POST | `/api/v1/workflow/agendas` | Authority | Assigned agenda list / create agenda from cited chat. |
-| GET | `/api/v1/workflow/agendas/{id}` | Participant | Agenda, official messages, versions, and evidence snapshots. |
-| POST | `/api/v1/workflow/agendas/{id}/revisions` | Current owner | Saves a new official draft version. |
-| POST | `/api/v1/workflow/agendas/{id}/transition` | Current owner | Performs state-authorized handoff/approval/rejection. |
-| POST | `/api/v1/workflow/agendas/{id}/query` | Current owner | Adds a grounded AI answer to the official thread. |
+| GET | `/api/v1/workflow/agendas/{agenda_id}` | Participant | Agenda, official messages, versions, and evidence snapshots. |
+| POST | `/api/v1/workflow/agendas/{agenda_id}/revisions` | Current owner | Saves a new official draft version. |
+| POST | `/api/v1/workflow/agendas/{agenda_id}/transition` | Current owner | Performs state-authorized handoff/approval/rejection. |
+| POST | `/api/v1/workflow/agendas/{agenda_id}/query` | Current owner | Adds a grounded AI answer to the official thread. |
 
 Supported transitions: `submit_to_nodal`, `return_to_do`, `submit_to_hod`,
 `approve`, and `reject`. The service verifies owner, source role, state, and
@@ -80,7 +82,7 @@ target officer before mutation.
 | GET | `/api/v1/billing/status` | Authority | Artifact availability/status. |
 | GET | `/api/v1/billing/rules` | Authority | Form rules, rates, labels, and limits. |
 | GET | `/api/v1/billing/tenancies` | Authority | Eligible tenancy choices. |
-| GET | `/api/v1/billing/tenancies/{id}/prefill` | Authority | Source-backed selected-tenancy prefill. |
+| GET | `/api/v1/billing/tenancies/{tenancy_id}/prefill` | Authority | Source-backed selected-tenancy prefill. |
 | POST | `/api/v1/billing/predict` | Authority | Validated billing forecast and calculation context. |
 
 ## Tender publication
@@ -89,13 +91,13 @@ target officer before mutation.
 | --- | --- | --- | --- |
 | GET | `/api/v1/tender/config` | Authority | Form and workflow configuration. |
 | GET | `/api/v1/tender/plots` | Authority | Eligible vacant plots. |
-| GET | `/api/v1/tender/plots/{id}` | Authority | Source-backed plot detail/prefill. |
-| GET | `/api/v1/tender/checklists/{key}` | Authority | LAC checklist evidence. |
+| GET | `/api/v1/tender/plots/{plot_id}` | Authority | Source-backed plot detail/prefill. |
+| GET | `/api/v1/tender/checklists/{checklist_key}` | Authority | LAC checklist evidence. |
 | POST | `/api/v1/tender/calculate` | Authority | Deterministic proposal calculation. |
 | GET/POST | `/api/v1/tender/workflows` | Authority | List/create local tender workflow records. |
-| GET | `/api/v1/tender/workflows/{id}` | Authority | One workflow record. |
-| POST | `/api/v1/tender/workflows/{id}/actions` | Authority | Validated state action. |
-| GET | `/api/v1/tender/workflows/{id}/documents/{kind}` | Authority | Generated draft PDF (`lac`, `board-note`, or `tender`). |
+| GET | `/api/v1/tender/workflows/{workflow_id}` | Authority | One workflow record. |
+| POST | `/api/v1/tender/workflows/{workflow_id}/actions` | Authority | Validated state action. |
+| GET | `/api/v1/tender/workflows/{workflow_id}/documents/{document_kind}` | Authority | Generated draft PDF (`lac`, `board-note`, or `tender`). |
 
 ## Error contract
 
