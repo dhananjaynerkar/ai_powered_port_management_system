@@ -76,15 +76,16 @@ while the runtime responsibilities remain in their original component owners.
 | Check | Result | Evidence |
 | --- | --- | --- |
 | TypeScript/Vite production build | **PASS** | `web`: `npm run build`; Vite transformed 1,671 modules and emitted `dist` successfully. |
+| Full Python regression suite | **PASS** | `.venv\\Scripts\\python.exe -m pytest -q --tb=no`: **48 passed**. |
 | Targeted Python regression checks | **PASS** | `tests/test_inspection.py` and `tests/test_chat_payload.py`: **5 passed**. |
 | Ruff | **PASS** | `.venv\\Scripts\\ruff.exe check src tests`: `All checks passed!` |
 | Live UI smoke | **PASS** | Disposable Vite server on `http://127.0.0.1:5177/`; page title `Port Management System`, root shell rendered, and browser error/warning log was empty. The API was intentionally not started for this frontend-only check, so the expected connecting state was observed. |
 | Diff hygiene | **PASS** | `git diff --check` returned no whitespace errors. |
 
-The targeted checks validate that backend-facing code and existing Python
-contracts still compile and pass; the frontend build validates the new module
-and all imports. The live smoke intentionally stops at the unauthenticated
-shell because Phase 16 made no API/runtime change.
+The full and targeted checks validate that backend-facing code and existing
+Python contracts still pass; the frontend build validates the new module and
+all imports. The live smoke intentionally stops at the unauthenticated shell
+because Phase 16 made no API/runtime change.
 
 ## Remaining candidates (not changed in this phase)
 
