@@ -1,7 +1,8 @@
-import { CSSProperties, FormEvent, Fragment, KeyboardEvent, ReactNode, UIEvent, useEffect, useRef, useState } from "react";
+import { CSSProperties, FormEvent, Fragment, KeyboardEvent, ReactNode, UIEvent, useEffect, useId, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Anchor,
+  ArrowUp,
   ArrowUpDown,
   Bot,
   CalendarDays,
@@ -14,6 +15,7 @@ import {
   FileSearch,
   FileText,
   Globe,
+  Info,
   Layers,
   LayoutDashboard,
   LogOut,
@@ -53,10 +55,37 @@ import {
   workflowStageIndex,
   workflowStageLabel,
 } from "./shared/utils";
+import { DataState } from "./shared/DataState";
+import { I18nProvider, LanguageSelect, useI18n } from "./shared/i18n";
+import { LandingFooter, LandingHeader, LandingPage } from "./components/landing/Landing";
 import "./styles.css";
 
 type Role = "authority" | "tenant";
 type User = { user_id: string; username: string; name: string; role: Role; role_title?: string };
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  length: number;
+  [index: number]: { transcript: string };
+};
+type SpeechRecognitionEventLike = Event & {
+  resultIndex: number;
+  results: { length: number; [index: number]: SpeechRecognitionResultLike };
+};
+type SpeechRecognitionErrorEventLike = Event & { error: string };
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type AudioContextConstructor = new () => AudioContext;
 type Corpus = {
   documents: number;
   pending_documents?: number;
@@ -360,26 +389,6 @@ function ResizableSplitter({
     </div>
   );
 }
-type DataStateTone = "loading" | "empty" | "error";
-function DataState({
-  tone,
-  title,
-  detail,
-  action,
-}: {
-  tone: DataStateTone;
-  title: string;
-  detail?: string;
-  action?: { label: string; onClick: () => void };
-}) {
-  return (
-    <div className={`data-state ${tone}`} role={tone === "error" ? "alert" : "status"} aria-live="polite">
-      <span className="data-state-icon" aria-hidden="true">{tone === "loading" ? <span className="button-spinner" /> : tone === "error" ? <X /> : <FileText />}</span>
-      <div><b>{title}</b>{detail && <p>{detail}</p>}</div>
-      {action && <button type="button" onClick={action.onClick}>{action.label}</button>}
-    </div>
-  );
-}
 function renderInlineMarkdown(value: string): ReactNode[] {
   const tokenPattern = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*(.+?)\*\*|__(.+?)__|`([^`]+)`|\*([^*\n]+)\*|_([^_\n]+)_)/g;
   const output: ReactNode[] = [];
@@ -586,7 +595,7 @@ function BillingForecastModal({ chatSessionId, onClose, onComplete }: { chatSess
   };
   const areaMissing = form.area.trim() === "";
   const structureMissing = form.structure_type.trim() === "";
-  const requiredInputMissing = !form.target_year || !form.target_month || !form.present_amount || !form.present_cgst || !form.present_sgst || areaMissing || structureMissing;
+  const requiredInputMissing = form.target_year.trim() === "" || form.target_month.trim() === "" || form.present_amount.trim() === "" || form.present_cgst.trim() === "" || form.present_sgst.trim() === "" || areaMissing || structureMissing;
   const monthOptions = rules?.months || Array.from({ length: 12 }, (_, index) => ({ value: index + 1, label: new Date(2000, index, 1).toLocaleString([], { month: "long" }) }));
   return <div className="billing-forecast-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !running) onClose(); }}>
     <section className="billing-forecast-dialog" role="dialog" aria-modal="true" aria-labelledby="billing-forecast-title">
@@ -611,7 +620,7 @@ function BillingForecastModal({ chatSessionId, onClose, onComplete }: { chatSess
         <details className="billing-rates" open><summary>Formula rates (%)</summary><div className="billing-form-grid billing-rate-grid">{(rules?.rates || []).map((rate) => { const source = billingRateSources[rate.key] || "No target-period source value"; const sourceLabel = source.includes("CSV") ? "Customer override" : source.includes("PostgreSQL") ? "Target-period master" : "Unavailable"; return <label className="billing-field" key={rate.key}><span>{rate.label}</span><input type="number" min="0" step="0.01" title={`Source: ${source}`} aria-label={`${rate.label} rate (${source})`} value={form.rates[rate.key] || ""} onChange={(event) => setRate(rate.key, event.target.value)} /><small className="billing-rate-source">{sourceLabel}</small></label>; })}</div></details>
         {billingWarnings.length > 0 && <section className="billing-forecast-notes" role="status" aria-label="Source data notes"><strong>Source data notes</strong><ul>{billingWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></section>}
         {error && <p className="billing-forecast-error" role="alert">{error}</p>}
-        {result?.prediction && <div className="billing-forecast-result" role="status"><b>Forecast added to chat</b><strong>INR {Number(result.prediction.final_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><small>{result.prediction.formula_schedule || "Model forecast with formula layer"}</small></div>}
+        {result?.prediction && <div className="billing-forecast-result" role="status"><b>Forecast and calculation added to chat</b><div className="billing-result-values"><span><small>Forecast base (model)</small><strong>INR {Number(result.prediction.monthly_base_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span><span><small>Final calculated bill</small><strong>INR {Number(result.prediction.final_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span></div><small>{result.prediction.formula_schedule || "Taxes and charges calculated from approved rules and rates."}</small></div>}
         <footer className="billing-forecast-actions"><button type="button" className="billing-cancel" onClick={onClose} disabled={running}>Cancel</button><button type="button" className="billing-run" onClick={() => void runPrediction()} disabled={running || prefilling || requiredInputMissing}>{running ? <><span className="button-spinner"/>Running prediction…</> : "Run prediction and add to chat"}</button></footer>
       </>}
     </section>
@@ -741,7 +750,7 @@ const assistantSuggestions = [
   "Show breach rules",
 ];
 const assistantContextOptions: ContextOption[] = [
-  { value: "all", label: "All contexts & documents", available: true },
+  { value: "all", label: "All permitted documents", available: true },
   { value: "billing", label: "Billing Forecast", available: true },
   { value: "tender", label: "Tender Publication Workflow", available: true },
   { value: "board-note", label: "Board Note", available: true },
@@ -767,7 +776,9 @@ async function api(path: string, init?: RequestInit): Promise<any> {
   if (!res.ok) {
     const detail = Array.isArray(body.detail)
       ? body.detail.map((item: any) => item.msg || "Invalid input.").join(" ")
-      : body.detail;
+      : typeof body.detail === "object" && body.detail !== null
+        ? body.detail.message || "Request failed."
+        : body.detail;
     throw new Error(detail || "Request failed.");
   }
   return body;
@@ -778,6 +789,7 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [setup, setSetup] = useState<boolean | null>(null);
   useEffect(() => {
+    performance.mark("ai-pms-app-shell-mounted");
     const change = () => setPath(location.pathname);
     addEventListener("popstate", change);
     api("/api/v1/auth/bootstrap-status")
@@ -788,8 +800,11 @@ function App() {
       .catch(() => setUser(null));
     return () => removeEventListener("popstate", change);
   }, []);
+  useEffect(() => {
+    performance.mark(`ai-pms-route-${path.replace(/[^a-z0-9]+/gi, "-") || "home"}`);
+  }, [path]);
   if (setup === null)
-    return <div className="loading">Connecting to Port Management System…</div>;
+    return <div className="loading">Connecting to AI PMS…</div>;
   if (setup && path === "/setup")
     return (
       <Setup
@@ -848,149 +863,23 @@ function App() {
   );
 }
 
-function GovHeader() {
-  return (
-    <header className="gov-header">
-      <div className="tricolor" />
-      <div className="gov-top">
-        <div />
-        <div>
-          <Globe size={13} />
-          <select aria-label="Language">
-            <option>English</option>
-          </select>
-        </div>
-      </div>
-      <div className="gov-main">
-        <button className="identity" onClick={() => go("/")}>
-          <span>PMS</span>
-          <div>
-            <small>PORT AUTHORITY</small>
-            <b>Port Management System</b>
-          </div>
-        </button>
-        <nav>
-          <button
-            className={location.pathname === "/" ? "active" : ""}
-            onClick={() => go("/")}
-          >
-            Home
-          </button>
-          <button>About</button>
-          <button>Contact</button>
-          <button>Help</button>
-        </nav>
-      </div>
-    </header>
-  );
+function GovHeader({ compact = false }: { compact?: boolean } = {}) {
+  return <LandingHeader compact={compact} onRoleEnter={(role) => go(role === "authority" ? "/authority/login" : "/tenant/login")} />;
 }
 function Footer() {
-  return (
-    <footer className="footer">
-      <div>
-        <section>
-          <b title="Port Management System">Port Management System</b>
-          <p>
-            An enterprise platform for port document intelligence and
-            governance.
-          </p>
-        </section>
-        <section>
-          <b>Quick Links</b>
-          <p>Document Library</p>
-          <p>AI Assistant</p>
-          <p>About</p>
-        </section>
-        <section>
-          <b>Legal</b>
-          <p>Disclaimer</p>
-          <p>Privacy Policy</p>
-          <p>Terms of Use</p>
-          <p>Accessibility</p>
-       </section>
-      </div>
-    </footer>
-  );
+  return <LandingFooter />;
 }
 function Home({ initialSetup = false }: { initialSetup?: boolean }) {
-  const cards = [
-    [
-      <Bot />,
-      "AI Chat Assistant",
-      "Ask questions across indexed policy documents with cited source pages.",
-    ],
-    [
-      <Users />,
-      "Tenant Services",
-      "Access the document library and evidence-based AI support.",
-    ],
-    [
-      <LayoutDashboard />,
-      "Authority Dashboard",
-      "Review corpus health and document extraction status.",
-    ],
-    [
-      <FileSearch />,
-      "Policy Repository",
-      "Search the local PDF corpus using semantic and keyword retrieval.",
-    ],
-  ];
   const [corpus, setCorpus] = useState<Corpus | null>(null);
   useEffect(() => {
     api("/api/v1/public/corpus")
       .then(setCorpus)
       .catch(() => {});
   }, []);
-  const portal = initialSetup ? "/setup" : "/tenant/login";
-  const authority = initialSetup ? "/setup" : "/authority/login";
   return (
     <div className="public">
-      <GovHeader />
-      <section className="home-hero">
-        <div>
-          <em>● AI Powered</em>
-          <h1>AI Powered Port Document Intelligence Assistant</h1>
-          <p>
-            Secure intelligent assistant for searching indexed port policy
-            documents, circulars, tariffs, procedures and acts with Hybrid RAG
-            and page-anchored evidence.
-          </p>
-          <aside>
-            <button onClick={() => go(portal)}>
-              {initialSetup ? "Create portal account" : "Tenant Portal"}{" "}
-              <span>→</span>
-            </button>
-            <button onClick={() => go(authority)}>
-              {initialSetup ? "Initial secure setup" : "Authority Portal"}
-            </button>
-          </aside>
-          <div className="home-stats">
-            <article>
-              <b>{corpus?.documents ?? "—"}</b>
-              <small>Indexed PDFs</small>
-            </article>
-            <article>
-              <b>{corpus?.pages ?? "—"}</b>
-              <small>Source Pages</small>
-            </article>
-          </div>
-        </div>
-      </section>
-      <section className="feature-section">
-        <small>PLATFORM MODULES</small>
-        <h2>One secure system for port document governance</h2>
-        <p>Purpose-built for port authorities, tenants and policy officers.</p>
-        <div>
-          {cards.map(([icon, title, body], i) => (
-            <article key={i}>
-              <span>{icon}</span>
-              <b>{title}</b>
-              <p>{body}</p>
-              <i />
-            </article>
-          ))}
-        </div>
-      </section>
+      <GovHeader compact />
+      <LandingPage corpus={corpus} initialSetup={initialSetup} onRoleEnter={(role) => go(initialSetup ? "/setup" : role === "authority" ? "/authority/login" : "/tenant/login")} />
       <Footer />
     </div>
   );
@@ -1004,8 +893,12 @@ function Setup({ done }: { done: (u: User) => void }) {
     role: "authority" as Role,
   });
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError("");
     try {
       done(
         await api("/api/v1/auth/bootstrap", {
@@ -1015,11 +908,11 @@ function Setup({ done }: { done: (u: User) => void }) {
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Setup failed");
-    }
+    } finally { setSubmitting(false); }
   }
   return (
     <div className="public">
-      <GovHeader />
+      <GovHeader compact />
       <main className="login-page">
         <form className="portal-login setup-login" onSubmit={submit}>
           <div className="login-title">
@@ -1038,6 +931,7 @@ function Setup({ done }: { done: (u: User) => void }) {
             <input
               required
               value={form.display_name}
+              disabled={submitting}
               onChange={(e) =>
                 setForm({ ...form, display_name: e.target.value })
               }
@@ -1047,6 +941,7 @@ function Setup({ done }: { done: (u: User) => void }) {
             Portal role
             <select
               value={form.role}
+              disabled={submitting}
               onChange={(e) =>
                 setForm({ ...form, role: e.target.value as Role })
               }
@@ -1062,6 +957,7 @@ function Setup({ done }: { done: (u: User) => void }) {
               minLength={3}
               placeholder="Enter username"
               value={form.username}
+              disabled={submitting}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
           </label>
@@ -1073,13 +969,14 @@ function Setup({ done }: { done: (u: User) => void }) {
               type="password"
               placeholder="Minimum 12 characters"
               value={form.password}
+              disabled={submitting}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
           </label>
           {error && <p className="error">{error}</p>}
-          <button>
-            <ShieldCheck />
-            Create secure account
+          <button disabled={submitting}>
+            {submitting ? <span className="button-spinner" /> : <ShieldCheck />}
+            {submitting ? "Creating account…" : "Create secure account"}
           </button>
         </form>
       </main>
@@ -1099,8 +996,12 @@ function Login({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError("");
     try {
       done(
         await api(
@@ -1112,12 +1013,12 @@ function Login({
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid credentials.");
-    }
+    } finally { setSubmitting(false); }
   }
   const authority = role === "authority";
   return (
     <div className="public">
-      <GovHeader />
+      <GovHeader compact />
       <main className="login-page">
         <form className="portal-login" onSubmit={submit}>
           <div className="login-title">
@@ -1142,6 +1043,7 @@ function Login({
                   : "Enter tenant username"
               }
               value={username}
+              disabled={submitting}
               onChange={(e) => setUsername(e.target.value)}
             />
           </label>
@@ -1152,33 +1054,34 @@ function Login({
               type="password"
               placeholder="••••••••"
               value={password}
+              disabled={submitting}
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
           {error && <p className="error">{error}</p>}
-          <button>
-            <ShieldCheck />
-            {authority ? "Sign in Securely" : "Secure Login"}
+          <button disabled={submitting}>
+            {submitting ? <span className="button-spinner" /> : <ShieldCheck />}
+            {submitting ? "Signing in…" : authority ? "Sign in Securely" : "Secure Login"}
           </button>
           <p className="login-switch">
             {initialSetup ? (
               <>
                 First use?{" "}
-                <a onClick={() => go("/setup")}>
+                <a href="/setup" onClick={(event) => { event.preventDefault(); go("/setup"); }}>
                   Create initial portal account
                 </a>
               </>
             ) : authority ? (
               <>
                 Not a Port Officer?{" "}
-                <a onClick={() => go("/tenant/login")}>
+                <a href="/tenant/login" onClick={(event) => { event.preventDefault(); go("/tenant/login"); }}>
                   Go to Tenant Login Portal
                 </a>
               </>
             ) : (
               <>
                 Port authority officer?{" "}
-                <a onClick={() => go("/authority/login")}>
+                <a href="/authority/login" onClick={(event) => { event.preventDefault(); go("/authority/login"); }}>
                   Go to Authority Portal
                 </a>
               </>
@@ -1252,7 +1155,7 @@ function Dashboard({
       <aside className={menu ? "app-sidebar open" : "app-sidebar"}>
         <div className="side-logo">
           <Anchor />
-          <b>Port Management System</b>
+          <b>AI PMS</b>
           <button aria-label="Close navigation menu" onClick={() => setMenu(false)}>
             <X />
           </button>
@@ -1321,6 +1224,7 @@ function Dashboard({
             </div>
           )}
           <div className="app-top-right">
+            <LanguageSelect compact />
             <div className={`corpus-status-control ${corpusStatusTone}`}>
               <button type="button" className="corpus-status-button" aria-expanded={showCorpusStatus} onClick={() => setShowCorpusStatus((value) => !value)}><ShieldCheck/><span>{corpusStatusLabel}</span><ChevronDown/></button>
               {showCorpusStatus && <section className="corpus-status-popover" role="dialog" aria-label="Document corpus status">
@@ -1380,38 +1284,42 @@ function Overview({ authority }: { authority: boolean }) {
   if (!authority) {
     if (loading) return <section className="data-state-page"><DataState tone="loading" title="Loading document metrics" detail="Retrieving the current indexed corpus." /></section>;
     if (error || !corpus) return <section className="data-state-page"><DataState tone="error" title="Unable to load document metrics." detail="The document summary could not be retrieved. Try again." action={{ label: "Retry", onClick: () => setReloadKey((value) => value + 1) }} /></section>;
-    const cards = [
+    const cards: Array<[string, string | number | undefined, string, ReactNode, string]> = [
       [
         "INDEXED PDFs",
         corpus?.documents,
         "Live document records",
         <FileText />,
+        "Number of indexed document records in your workspace.",
       ],
       [
         "SOURCE PAGES",
         corpus?.pages,
         "Extracted from indexed PDFs",
         <Layers />,
+        "Total extracted pages across indexed PDFs.",
       ],
       [
         "SEARCHABLE CHUNKS",
         corpus?.chunks,
         "Hybrid retrieval passages",
         <Database />,
+        "Passages available to hybrid retrieval.",
       ],
       [
         "PGVECTOR EMBEDDINGS",
         corpus?.vectors,
         "Configured dense vectors",
         <Database />,
+        "Dense vectors stored for semantic retrieval.",
       ],
     ];
     return <>
       <section className="page-intro compact-intro"><div><span className="eyebrow">Document intelligence</span><h2>Corpus overview</h2><p>Current ingestion and retrieval capacity for your authenticated document workspace.</p></div></section>
       <section className="kpis tenant-kpis">
-        {cards.map(([label, value, sub, icon], i) => (
+        {cards.map(([label, value, sub, icon, tooltip], i) => (
           <article key={i}>
-            <div><small>{label}</small><span>{icon}</span></div><b>{value ?? "—"}</b><p>{sub}</p>
+            <div><small>{label}</small><DashboardTooltip text={tooltip} /><span>{icon}</span></div><b>{value ?? "—"}</b><p>{sub}</p>
           </article>
         ))}
       </section>
@@ -1419,46 +1327,52 @@ function Overview({ authority }: { authority: boolean }) {
   }
   if (loading) return <section className="data-state-page"><DataState tone="loading" title="Loading land metrics" detail="Retrieving live operational metrics from the PMS database." /></section>;
   if (error || !data) return <section className="data-state-page"><DataState tone="error" title="Unable to load land metrics." detail="The dashboard metrics could not be retrieved. Try again." action={{ label: "Retry", onClick: () => setReloadKey((value) => value + 1) }} /></section>;
-  const kpis = [
-    [
-      "TOTAL PLOT RECORDS",
-      data?.total_plot_records,
-      "From public.plot",
-      <Layers />,
-    ],
-    [
-      "TOTAL LAND AREA",
-      data?.total_land.sqm,
-      `Equivalent to ${data?.total_land.hectares ?? "—"}`,
-      <Layers />,
-    ],
-    [
-      "APPROVED LAND (A)",
-      data?.approved_land.sqm,
-      `${data?.approved_land.hectares ?? "—"} · public.plot.status`,
-      <Building2 />,
-    ],
-    [
-      "VACANT LAND (is_vacant)",
-      data?.vacant_land.sqm,
-      `${data?.vacant_land.hectares ?? "—"} · explicit vacancy flag`,
-      <Layers />,
-    ],
-    [
-      "REGISTERED LAND (RG - REGISTERED)",
-      data?.registered_land.sqm,
-      `${data?.registered_land.hectares ?? "—"} · public.plot.status`,
-      <FileSearch />,
-    ],
+  const kpis: Array<[string, string | number | undefined, string, ReactNode, string]> = [
+      [
+        "TOTAL PLOT RECORDS",
+        data?.total_plot_records,
+        "From public.plot",
+        <Layers />,
+        "Count of plot records returned from public.plot.",
+      ],
+      [
+        "TOTAL LAND AREA",
+        data?.total_land.sqm,
+        `Equivalent to ${data?.total_land.hectares ?? "—"}`,
+        <Layers />,
+        "Combined area of all plot records; shown in square metres with a hectare equivalent.",
+      ],
+      [
+        "APPROVED LAND (A)",
+        data?.approved_land.sqm,
+        `${data?.approved_land.hectares ?? "—"} · public.plot.status`,
+        <Building2 />,
+        "Area for plots whose source status is A (Approved) in public.plot.status.",
+      ],
+      [
+        "VACANT LAND (is_vacant)",
+        data?.vacant_land.sqm,
+        `${data?.vacant_land.hectares ?? "—"} · explicit vacancy flag`,
+        <Layers />,
+        "Area for plots explicitly marked vacant by public.plot.is_vacant.",
+      ],
+      [
+        "REGISTERED LAND (RG - REGISTERED)",
+        data?.registered_land.sqm,
+        `${data?.registered_land.hectares ?? "—"} · public.plot.status`,
+        <FileSearch />,
+        "Area for plots whose source status is RG (Registered) in public.plot.status.",
+      ],
   ];
   return (
     <>
       <section className="page-intro dashboard-intro"><div><span className="eyebrow">Authority operations</span><h2>Land and applicant-property overview</h2><p>Live distribution across plot status, explicit vacancy, and applicant-property mapping records.</p></div><span className="data-note">Updated from PMS database</span></section>
       <section className="kpis">
-        {kpis.map(([label, value, sub, icon], i) => (
+        {kpis.map(([label, value, sub, icon, tooltip], i) => (
           <article key={i}>
             <div>
               <small>{label}</small>
+              <DashboardTooltip text={tooltip} />
               <span>{icon}</span>
             </div>
             <b>{value ?? "—"}</b>
@@ -1470,11 +1384,13 @@ function Overview({ authority }: { authority: boolean }) {
         <Chart
           title="Plot status distribution"
           subtitle={`${data?.total_plot_records ?? "—"} · labels from public.m_property_status`}
+          tooltip="Counts grouped by the source status label in public.m_property_status."
           entries={data?.plot_status_breakdown ?? []}
         />
         <Donut
           title="Plot status and vacancy classification"
           subtitle="Source-derived view: status RG first, then public.plot.is_vacant"
+          tooltip="Area grouped by status first, then explicit vacancy flag; categories are source-derived."
           centerValue={data?.total_land.hectares ?? "—"}
           centerLabel="Total"
           entries={data?.land_occupancy_breakdown ?? []}
@@ -1482,21 +1398,25 @@ function Overview({ authority }: { authority: boolean }) {
         <Chart
           title="Derived tenure classification"
           subtitle={`${data?.tenant_terminology?.lifecycle_records.count.toLocaleString() ?? "—"} ${data?.tenant_terminology?.lifecycle_records.label.toLowerCase() ?? "derived tenure classifications"}; not an active-tenancy status`}
+          tooltip="Records grouped into lifecycle categories from tenancy type; this is not an active-tenancy status."
           entries={data?.tenancy_lifecycle_breakdown ?? []}
         />
         <Chart
           title="Lease / tenancy type"
           subtitle="Source values from public.applicant_property_mapping.tenancy_type"
+          tooltip="Counts grouped by source values in public.applicant_property_mapping.tenancy_type."
           entries={data?.lease_type_breakdown ?? []}
         />
         <Chart
           title="Tenant structure"
           subtitle="Separate dimension · public.applicant_property_mapping.tenant_type"
+          tooltip="Counts grouped by tenant_type; this is separate from tenancy type."
           entries={data?.tenant_structure_breakdown ?? []}
         />
         <Chart
           title="Billing periodicity"
           subtitle="Separate dimension · public.applicant_property_mapping.bill_periodicity"
+          tooltip="Counts grouped by bill_periodicity; this is separate from lease type."
           entries={data?.billing_periodicity_breakdown ?? []}
         />
       </section>
@@ -1509,30 +1429,47 @@ function Overview({ authority }: { authority: boolean }) {
     </>
   );
 }
+function DashboardTooltip({ text }: { text: string }) {
+  const tooltipId = useId();
+  return (
+    <span className="dashboard-tooltip-anchor">
+      <button type="button" className="dashboard-tooltip-trigger" aria-label={text} aria-describedby={tooltipId}>
+        <Info aria-hidden="true" />
+      </button>
+      <span id={tooltipId} className="dashboard-tooltip-content" role="tooltip">{text}</span>
+    </span>
+  );
+}
 function Chart({
   title,
   subtitle,
+  tooltip,
   entries,
 }: {
   title: string;
   subtitle: string;
+  tooltip: string;
   entries: { name: string; count: number; color: string }[];
 }) {
+  const [hoveredBar, setHoveredBar] = useState<number | null>(null);
+  const [pinnedBar, setPinnedBar] = useState<number | null>(null);
   const max = Math.max(1, ...entries.map((x) => x.count));
   const scale = Math.ceil(max / 800) * 800;
   const plotLeft = 45;
   const plotRight = 488;
   const slotWidth = (plotRight - plotLeft) / Math.max(entries.length, 1);
   const barWidth = Math.min(42, Math.max(12, slotWidth * 0.72));
+  const activeBar = pinnedBar ?? hoveredBar;
   return (
     <article className="chart">
-      <h2>{title}</h2>
+      <h2>{title} <DashboardTooltip text={tooltip} /></h2>
       <p>{subtitle}</p>
       <svg
         className="live-bars"
         viewBox="0 0 500 220"
-        role="img"
+        role="group"
         aria-label={title}
+        onClick={(event) => { if (event.target === event.currentTarget) setPinnedBar(null); }}
       >
         {[0, 1, 2, 3, 4].map((i) => {
           const y = 18 + i * 40;
@@ -1549,12 +1486,41 @@ function Chart({
           const width = barWidth;
           const xPos = plotLeft + i * slotWidth + (slotWidth - width) / 2;
           const height = (x.count / scale) * 160;
+          const valueLabel = x.count.toLocaleString();
           const label = x.name.length > 10 ? `${x.name.slice(0, 9)}…` : x.name;
           const labelX = xPos + width / 2;
           const rotateLabels = entries.length > 8;
+          // Keep the tooltip compact for short labels while allowing longer
+          // names to wrap within a readable maximum width.
+          const tooltipWidth = Math.min(
+            220,
+            Math.max(76, Math.max(x.name.length * 6.5, valueLabel.length * 7) + 20),
+          );
+          const tooltipLineCount = Math.max(1, Math.ceil((x.name.length * 6.5) / (tooltipWidth - 20)));
+          const tooltipHeight = Math.min(76, 24 + tooltipLineCount * 12 + 14);
+          const tooltipX = Math.min(Math.max(labelX - tooltipWidth / 2, 6), 494 - tooltipWidth);
+          const tooltipY = Math.max(4, 178 - height - tooltipHeight - 8);
           return (
-            <g key={x.name}>
-              <title>{`${x.name}: ${x.count.toLocaleString()}`}</title>
+            <g
+              key={x.name}
+              className={`chart-bar${activeBar === i ? " active" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`${x.name}: ${x.count.toLocaleString()}`}
+              aria-pressed={activeBar === i}
+              onMouseEnter={() => setHoveredBar(i)}
+              onMouseLeave={() => setHoveredBar(null)}
+              onFocus={() => setHoveredBar(i)}
+              onBlur={() => setHoveredBar(null)}
+              onClick={() => setPinnedBar((current) => current === i ? null : i)}
+              onKeyDown={(event: KeyboardEvent<SVGGElement>) => {
+                if (event.key === "Escape") { setPinnedBar(null); setHoveredBar(null); return; }
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setPinnedBar((current) => current === i ? null : i);
+                }
+              }}
+            >
               <rect
                 x={xPos}
                 y={178 - height}
@@ -1572,6 +1538,21 @@ function Chart({
               >
                 {label}
               </text>
+              {activeBar === i && (
+                <foreignObject
+                  className="chart-data-tooltip-foreign"
+                  x={tooltipX}
+                  y={tooltipY}
+                  width={tooltipWidth}
+                  height={tooltipHeight}
+                  pointerEvents="none"
+                >
+                  <div className="chart-data-tooltip" role="tooltip">
+                    <strong>{x.name}</strong>
+                    <span>{valueLabel}</span>
+                  </div>
+                </foreignObject>
+              )}
             </g>
           );
         })}
@@ -1582,12 +1563,14 @@ function Chart({
 function Donut({
   title,
   subtitle,
+  tooltip,
   centerValue,
   centerLabel,
   entries,
 }: {
   title: string;
   subtitle: string;
+  tooltip: string;
   centerValue: string;
   centerLabel: string;
   entries: { name: string; value: number; color: string }[];
@@ -1601,24 +1584,118 @@ function Donut({
       return `${x.color} ${start}deg ${(cursor / Math.max(total, 1)) * 360}deg`;
     })
     .join(", ");
+  const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
+  const [pinnedSegment, setPinnedSegment] = useState<number | null>(null);
+  const [hoveredSource, setHoveredSource] = useState<"ring" | "legend" | null>(null);
+  const [pinnedSource, setPinnedSource] = useState<"ring" | "legend" | null>(null);
+  const activeSegment = pinnedSegment ?? hoveredSegment;
+  const activeSource = pinnedSource ?? hoveredSource;
+  const activeEntry = activeSegment === null ? null : entries[activeSegment];
+  const activeValueLabel = activeEntry
+    ? `${activeEntry.value.toFixed(2)} ha · ${total ? `${((activeEntry.value / total) * 100).toFixed(1)}%` : "0.0%"}`
+    : "";
+  const ringRadius = 40;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  let segmentOffset = 0;
+  const togglePinnedSegment = (index: number, source: "ring" | "legend") => {
+    if (pinnedSegment === index) {
+      setPinnedSegment(null);
+      setPinnedSource(null);
+      return;
+    }
+    setPinnedSegment(index);
+    setPinnedSource(source);
+  };
   return (
     <article className="chart donut-card">
-      <h2>{title}</h2>
+      <h2>{title} <DashboardTooltip text={tooltip} /></h2>
       <p>{subtitle}</p>
-      <div className="donut" role="img" aria-label={`${title}: ${entries.map((entry) => `${entry.name} ${entry.value.toFixed(2)} hectares`).join(", ")}`} tabIndex={0} style={{ background: `conic-gradient(${stops})` }}>
-        <span>
+      <div
+        className="donut"
+        role="group"
+        aria-label={`${title}: ${entries.map((entry) => `${entry.name} ${entry.value.toFixed(2)} hectares`).join(", ")}`}
+        onClick={(event) => { if (event.target === event.currentTarget) { setPinnedSegment(null); setPinnedSource(null); } }}
+        style={{ background: `conic-gradient(${stops})` }}
+      >
+        <svg className="donut-interaction-layer" viewBox="0 0 100 100" aria-label={`${title} segments`}>
+          {entries.map((x, i) => {
+            const segmentLength = total > 0 ? (x.value / total) * ringCircumference : 0;
+            const currentOffset = segmentOffset;
+            segmentOffset += segmentLength;
+            return (
+              <g
+                key={x.name}
+                className={`donut-segment${activeSegment === i ? " active" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-label={`${x.name}: ${x.value.toFixed(2)} hectares`}
+                aria-pressed={activeSegment === i}
+                onMouseEnter={() => { setHoveredSegment(i); setHoveredSource("ring"); }}
+                onMouseLeave={() => { setHoveredSegment(null); setHoveredSource(null); }}
+                onFocus={() => { setHoveredSegment(i); setHoveredSource("ring"); }}
+                onBlur={() => { setHoveredSegment(null); setHoveredSource(null); }}
+                onClick={() => togglePinnedSegment(i, "ring")}
+                onKeyDown={(event: KeyboardEvent<SVGGElement>) => {
+                  if (event.key === "Escape") { setPinnedSegment(null); setPinnedSource(null); setHoveredSegment(null); setHoveredSource(null); return; }
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    togglePinnedSegment(i, "ring");
+                  }
+                }}
+              >
+                <circle
+                  className="donut-segment-hit"
+                  cx="50"
+                  cy="50"
+                  r={ringRadius}
+                  fill="none"
+                  stroke={x.color}
+                  strokeWidth="18"
+                  strokeDasharray={`${segmentLength} ${Math.max(ringCircumference - segmentLength, 0)}`}
+                  strokeDashoffset={-currentOffset}
+                  transform="rotate(-90 50 50)"
+                />
+              </g>
+            );
+          })}
+        </svg>
+        <div className="donut-center" aria-hidden="true">
           <b>{centerValue}</b>
           <small>{centerLabel}</small>
-        </span>
+        </div>
+        {activeEntry && activeSource === "ring" && <div className="donut-data-tooltip" role="tooltip"><strong>{activeEntry.name}</strong><span>{activeValueLabel}</span></div>}
       </div>
       <div className="legend">
-        {entries.map((x) => (
-          <span key={x.name}>
-            <i className="dot" style={{ background: x.color }} />
-            <strong>{x.name}</strong>
-            <small>{x.value.toFixed(2)} ha · {total ? `${((x.value / total) * 100).toFixed(1)}%` : "0.0%"}</small>
-          </span>
-        ))}
+        {entries.map((x, i) => {
+          const valueLabel = `${x.value.toFixed(2)} ha · ${total ? `${((x.value / total) * 100).toFixed(1)}%` : "0.0%"}`;
+          return (
+            <span
+              key={x.name}
+              className={`donut-legend-item${activeSegment === i ? " active" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`${x.name}: ${valueLabel}`}
+              aria-pressed={activeSegment === i}
+              onMouseEnter={() => { setHoveredSegment(i); setHoveredSource("legend"); }}
+              onMouseLeave={() => { setHoveredSegment(null); setHoveredSource(null); }}
+              onFocus={() => { setHoveredSegment(i); setHoveredSource("legend"); }}
+              onBlur={() => { setHoveredSegment(null); setHoveredSource(null); }}
+              onClick={() => togglePinnedSegment(i, "legend")}
+              onKeyDown={(event: KeyboardEvent<HTMLSpanElement>) => {
+                if (event.key === "Escape") { setPinnedSegment(null); setPinnedSource(null); setHoveredSegment(null); setHoveredSource(null); return; }
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  togglePinnedSegment(i, "legend");
+                }
+              }}
+            >
+              <i className="dot" style={{ background: x.color }} />
+              <strong>{x.name}</strong>
+              <small>{valueLabel}</small>
+              {activeSegment === i && activeSource === "legend" && <span className="donut-legend-tooltip" role="tooltip"><strong>{x.name}</strong><small>{valueLabel}</small></span>}
+            </span>
+          );
+        })}
       </div>
     </article>
   );
@@ -1639,6 +1716,7 @@ function Documents({ authority }: { authority: boolean }) {
   const [tenantReloadKey, setTenantReloadKey] = useState(0);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsError, setDocumentsError] = useState("");
+  const [documentsReloadKey, setDocumentsReloadKey] = useState(0);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
@@ -1670,7 +1748,7 @@ function Documents({ authority }: { authority: boolean }) {
       setDocumentsError("");
       api("/api/v1/documents").then((x) => setDocs(x.documents)).catch(() => { setDocumentsError("Unable to load indexed documents."); setDocs([]); }).finally(() => setDocumentsLoading(false));
     }
-  }, [authority, filter, statusFilter, leaseTypeFilter, allotmentFilter, dateFrom, dateTo, page, pageSize, sortBy, sortDirection, tenantReloadKey]);
+  }, [authority, filter, statusFilter, leaseTypeFilter, allotmentFilter, dateFrom, dateTo, page, pageSize, sortBy, sortDirection, tenantReloadKey, documentsReloadKey]);
   if (authority) {
     const resetPage = () => {
       setPage(1);
@@ -1788,7 +1866,7 @@ function Documents({ authority }: { authority: boolean }) {
               <span role="cell"><b>{tenantCell(t.tenant_id)}</b></span>
               <span role="cell">{tenantCell(t.tenant_name)}</span>
               <span role="cell">{tenantCell(t.contact_person)}</span>
-              <span role="cell">{tenantCell(t.tenancy_type)}</span>
+              <span role="cell">{tenantOptionLabel(tenantCell(t.tenancy_type))}</span>
               <span role="cell">{tenantCell(t.purpose)}</span>
               <span role="cell">{tenantCell(t.commencement)}</span>
               <span role="cell">
@@ -1847,7 +1925,7 @@ function Documents({ authority }: { authority: boolean }) {
         <span role="columnheader">QUALITY</span>
         <span role="columnheader">INGESTION STATE</span>
         </div>
-        {documentsLoading ? <DataState tone="loading" title="Loading indexed documents" detail="Retrieving document and extraction details." /> : documentsError ? <DataState tone="error" title="Unable to load indexed documents." detail="The document list could not be retrieved. Refresh and try again." /> : rows.map((d) => (
+        {documentsLoading ? <DataState tone="loading" title="Loading indexed documents" detail="Retrieving document and extraction details." /> : documentsError ? <DataState tone="error" title="Unable to load indexed documents." detail="The document list could not be retrieved. Refresh and try again." action={{ label: "Retry", onClick: () => setDocumentsReloadKey((value) => value + 1) }} /> : rows.map((d) => (
           <div className="doc-row" role="row" key={d.filename}>
             <span role="cell">
               <b>{d.filename}</b>
@@ -1882,6 +1960,7 @@ function Documents({ authority }: { authority: boolean }) {
   );
 }
 function Assistant({ user }: { user: User }) {
+  const { locale, t } = useI18n();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [corpusState, setCorpusState] = useState<CorpusState | null>(null);
@@ -1928,12 +2007,32 @@ function Assistant({ user }: { user: User }) {
   const workflowSideWidthRef = useRef(workflowSideWidth);
   const [busy, setBusy] = useState(false);
   const [queryBusy, setQueryBusy] = useState(false);
+  const [queryElapsedMs, setQueryElapsedMs] = useState(0);
   const [workspaceLoading, setWorkspaceLoading] = useState(true);
   const [workspaceError, setWorkspaceError] = useState("");
   const [isAtLatest, setIsAtLatest] = useState(true);
   const requestController = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceWaveRef = useRef<HTMLSpanElement | null>(null);
+  const voiceAudioStreamRef = useRef<MediaStream | null>(null);
+  const voiceAudioContextRef = useRef<AudioContext | null>(null);
+  const voiceAudioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const voiceAnalyserRef = useRef<AnalyserNode | null>(null);
+  const voiceAnalyserDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const voiceMeterFrameRef = useRef<number | null>(null);
+  const voiceMeterLevelRef = useRef(0);
+  const speechLocaleRef = useRef(locale);
+  const voiceBaseRef = useRef("");
+  const voiceFinalRef = useRef("");
+  const voiceInterimRef = useRef("");
+  const voiceListeningRef = useRef(false);
+  const voiceRestartTimerRef = useRef<number | null>(null);
+  const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceAudioLive, setVoiceAudioLive] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
   const assistantGridRef = useRef<HTMLDivElement | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -1963,6 +2062,216 @@ function Assistant({ user }: { user: User }) {
   useEffect(() => () => {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
   }, []);
+  useEffect(() => {
+    if (!queryBusy) {
+      setQueryElapsedMs(0);
+      return;
+    }
+    const startedAt = performance.now();
+    const timer = window.setInterval(() => setQueryElapsedMs(performance.now() - startedAt), 100);
+    return () => window.clearInterval(timer);
+  }, [queryBusy]);
+  function stopVoiceMeter() {
+    if (voiceMeterFrameRef.current !== null) {
+      window.cancelAnimationFrame(voiceMeterFrameRef.current);
+      voiceMeterFrameRef.current = null;
+    }
+    voiceAudioSourceRef.current?.disconnect();
+    voiceAudioSourceRef.current = null;
+    voiceAnalyserRef.current = null;
+    voiceAnalyserDataRef.current = null;
+    voiceMeterLevelRef.current = 0;
+    const stream = voiceAudioStreamRef.current;
+    voiceAudioStreamRef.current = null;
+    stream?.getTracks().forEach((track) => track.stop());
+    const context = voiceAudioContextRef.current;
+    voiceAudioContextRef.current = null;
+    if (context) void context.close().catch(() => undefined);
+    const wave = voiceWaveRef.current;
+    if (wave) {
+      for (const child of Array.from(wave.children)) {
+        const bar = child as HTMLElement;
+        bar.style.removeProperty("--voice-bar-height");
+        bar.style.removeProperty("--voice-bar-opacity");
+      }
+    }
+    setVoiceAudioLive(false);
+  }
+  function pumpVoiceMeter() {
+    const analyser = voiceAnalyserRef.current;
+    const samples = voiceAnalyserDataRef.current;
+    if (!analyser || !samples || !voiceListeningRef.current) {
+      voiceMeterFrameRef.current = null;
+      return;
+    }
+    analyser.getByteTimeDomainData(samples);
+    let sumSquares = 0;
+    let peak = 0;
+    for (const sample of samples) {
+      const value = (sample - 128) / 128;
+      sumSquares += value * value;
+      peak = Math.max(peak, Math.abs(value));
+    }
+    const rms = Math.sqrt(sumSquares / samples.length);
+    const target = Math.min(1, Math.max(0, (rms - 0.012) * 8 + peak * 0.18));
+    const previous = voiceMeterLevelRef.current;
+    const level = previous + (target - previous) * (target > previous ? 0.34 : 0.16);
+    voiceMeterLevelRef.current = level;
+    const wave = voiceWaveRef.current;
+    if (wave) {
+      // Move the audio peaks in one direction so the waveform reads as a
+      // continuous signal, rather than a collection of bars that only grow
+      // in place.
+      const now = performance.now();
+      const phase = now * 0.006;
+      Array.from(wave.children).forEach((child, index) => {
+        const bar = child as HTMLElement;
+        const primaryPulse = (Math.sin(index * 0.72 - phase) + 1) / 2;
+        const secondaryPulse = (Math.sin(index * 0.31 - phase * 0.58) + 1) / 2;
+        const pulse = Math.min(1, 0.16 + primaryPulse * 0.62 + secondaryPulse * 0.22);
+        const height = 1.5 + pulse * (1 + level * 18);
+        const opacity = Math.min(1, 0.48 + level * 0.34 + pulse * 0.18);
+        bar.style.setProperty("--voice-bar-height", `${height.toFixed(2)}px`);
+        bar.style.setProperty("--voice-bar-opacity", opacity.toFixed(3));
+      });
+    }
+    voiceMeterFrameRef.current = window.requestAnimationFrame(() => pumpVoiceMeter());
+  }
+  async function startVoiceMeter() {
+    stopVoiceMeter();
+    const getUserMedia = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices);
+    if (!getUserMedia) return;
+    try {
+      const stream = await getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      if (!voiceListeningRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const audioContextCtor: AudioContextConstructor | undefined = window.AudioContext
+        || (window as Window & { webkitAudioContext?: AudioContextConstructor }).webkitAudioContext;
+      if (!audioContextCtor) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const context = new audioContextCtor();
+      const source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.72;
+      source.connect(analyser);
+      voiceAudioStreamRef.current = stream;
+      voiceAudioContextRef.current = context;
+      voiceAudioSourceRef.current = source;
+      voiceAnalyserRef.current = analyser;
+      voiceAnalyserDataRef.current = new Uint8Array(analyser.fftSize);
+      voiceMeterLevelRef.current = 0;
+      setVoiceAudioLive(true);
+      void context.resume().catch(() => undefined);
+      voiceMeterFrameRef.current = window.requestAnimationFrame(() => pumpVoiceMeter());
+    } catch {
+      // SpeechRecognition can still provide transcripts when a separate audio
+      // analyser is unavailable, so keep the CSS fallback waveform active.
+      setVoiceAudioLive(false);
+    }
+  }
+  useEffect(() => {
+    speechLocaleRef.current = locale;
+    if (speechRecognitionRef.current) speechRecognitionRef.current.lang = locale === "mr" ? "mr-IN" : locale === "hi" ? "hi-IN" : "en-IN";
+  }, [locale]);
+  useEffect(() => {
+    if (tab !== "assistant" && voiceListeningRef.current) stopVoiceInput();
+  }, [tab]);
+  useEffect(() => {
+    const speechWindow = window as Window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setVoiceSupported(false);
+      return;
+    }
+    setVoiceSupported(true);
+    const recognition = new Recognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = speechLocaleRef.current === "mr" ? "mr-IN" : speechLocaleRef.current === "hi" ? "hi-IN" : "en-IN";
+    recognition.onstart = () => {
+      voiceListeningRef.current = true;
+      setVoiceListening(true);
+      setVoiceError("");
+    };
+    recognition.onresult = (event) => {
+      let interimTranscript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result[0]?.transcript || "";
+        if (result.isFinal) {
+          const current = voiceFinalRef.current;
+          const separator = current && transcript && !/\s$/.test(current) && !/^\s/.test(transcript) ? " " : "";
+          voiceFinalRef.current = `${current}${separator}${transcript}`;
+        } else {
+          const separator = interimTranscript && transcript && !/\s$/.test(interimTranscript) && !/^\s/.test(transcript) ? " " : "";
+          interimTranscript = `${interimTranscript}${separator}${transcript}`;
+        }
+      }
+      voiceInterimRef.current = interimTranscript;
+      const spoken = `${voiceFinalRef.current}${voiceInterimRef.current}`.trim();
+      const typed = voiceBaseRef.current.trimEnd();
+      setQuestion(typed && spoken ? `${typed} ${spoken}` : typed || spoken);
+    };
+    recognition.onerror = (event) => {
+      voiceListeningRef.current = false;
+      setVoiceListening(false);
+      stopVoiceMeter();
+      if (event.error === "aborted") return;
+      const messages: Record<string, string> = {
+        "not-allowed": "Microphone permission is blocked. Allow microphone access and try again.",
+        "service-not-allowed": "Microphone permission is blocked. Allow microphone access and try again.",
+        "audio-capture": "No microphone was detected. Connect a microphone and try again.",
+        "no-speech": "No speech was detected. Try speaking again.",
+        network: "Speech recognition is unavailable. Check the browser connection and try again.",
+      };
+      setVoiceError(messages[event.error] || "Voice input could not start. Try again.");
+    };
+    recognition.onend = () => {
+      if (!voiceListeningRef.current) {
+        setVoiceListening(false);
+        return;
+      }
+      if (voiceRestartTimerRef.current !== null) window.clearTimeout(voiceRestartTimerRef.current);
+      voiceRestartTimerRef.current = window.setTimeout(() => {
+        voiceRestartTimerRef.current = null;
+        if (!voiceListeningRef.current) return;
+        recognition.lang = speechLocaleRef.current === "mr" ? "mr-IN" : speechLocaleRef.current === "hi" ? "hi-IN" : "en-IN";
+        try { recognition.start(); } catch { /* The browser may still be closing the previous session. */ }
+      }, 120);
+    };
+    speechRecognitionRef.current = recognition;
+    return () => {
+      voiceListeningRef.current = false;
+      if (voiceRestartTimerRef.current !== null) window.clearTimeout(voiceRestartTimerRef.current);
+      recognition.onstart = null;
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      try { recognition.abort(); } catch { /* Ignore cleanup errors from an inactive recognizer. */ }
+      stopVoiceMeter();
+      speechRecognitionRef.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    const handleVoiceShortcut = (event: globalThis.KeyboardEvent) => {
+      if (event.repeat || !event.ctrlKey || !event.shiftKey || event.code !== "KeyD") return;
+      if (tab !== "assistant" || workspaceLoading || busy) return;
+      event.preventDefault();
+      toggleVoiceInput();
+    };
+    window.addEventListener("keydown", handleVoiceShortcut);
+    return () => window.removeEventListener("keydown", handleVoiceShortcut);
+  }, [busy, question, tab, workspaceLoading]);
   const conversationMaxWidth = () => {
     const grid = assistantGridRef.current;
     if (!grid) return CONVERSATION_MAX_WIDTH;
@@ -2057,7 +2366,7 @@ function Assistant({ user }: { user: User }) {
     const input = composerInputRef.current;
     if (!input) return;
     input.style.height = "auto";
-    input.style.height = `${Math.min(input.scrollHeight, 96)}px`;
+    input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
   }, [question]);
   useEffect(() => {
     if (!notice) return;
@@ -2220,8 +2529,46 @@ function Assistant({ user }: { user: User }) {
     setBusy(false);
     setNotice("Request stopped.");
   }
+  function stopVoiceInput() {
+    voiceListeningRef.current = false;
+    setVoiceListening(false);
+    stopVoiceMeter();
+    if (voiceRestartTimerRef.current !== null) {
+      window.clearTimeout(voiceRestartTimerRef.current);
+      voiceRestartTimerRef.current = null;
+    }
+    try { speechRecognitionRef.current?.stop(); } catch { /* Ignore an already-stopped recognizer. */ }
+  }
+  function toggleVoiceInput() {
+    const recognition = speechRecognitionRef.current;
+    if (!recognition) {
+      setVoiceError("Voice input is not supported in this browser. Try the latest Chrome or Edge.");
+      return;
+    }
+    if (voiceListeningRef.current) {
+      stopVoiceInput();
+      return;
+    }
+    voiceBaseRef.current = question.trimEnd();
+    voiceFinalRef.current = "";
+    voiceInterimRef.current = "";
+    setVoiceError("");
+    recognition.lang = speechLocaleRef.current === "mr" ? "mr-IN" : speechLocaleRef.current === "hi" ? "hi-IN" : "en-IN";
+    voiceListeningRef.current = true;
+    setVoiceListening(true);
+    try {
+      recognition.start();
+      void startVoiceMeter();
+    } catch {
+      stopVoiceMeter();
+      voiceListeningRef.current = false;
+      setVoiceListening(false);
+      setVoiceError("Voice input is already active. Try again in a moment.");
+    }
+  }
   async function send(e: FormEvent) {
     e.preventDefault(); if (!question.trim()) return;
+    if (voiceListeningRef.current) stopVoiceInput();
     const q = question;
     const controller = new AbortController();
     requestController.current = controller;
@@ -2238,7 +2585,7 @@ function Assistant({ user }: { user: User }) {
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") setNotice("Request stopped.");
-      else setError("AI Assistant is temporarily unavailable. Please try again.");
+      else setError(e instanceof Error ? e.message : "AI Assistant is temporarily unavailable. Please try again.");
     } finally {
       if (requestController.current === controller) requestController.current = null;
       setQueryBusy(false); setBusy(false);
@@ -2247,6 +2594,12 @@ function Assistant({ user }: { user: User }) {
   const nextRole = agenda?.state === "DO_DRAFT" || agenda?.state === "RETURNED_TO_DO" ? "NO" : agenda?.state === "SUBMITTED_TO_NO" ? "HO" : null;
   const eligibleOfficers = officers.filter((officer) => officer.role === nextRole);
   const workflowMessages = agenda?.messages || [];
+  const queryStatus = queryElapsedMs < 5000
+    ? "Searching authorized documents…"
+    : queryElapsedMs < 20000
+      ? "Reviewing supporting evidence…"
+      : "Complex policy questions can take longer on the local AI engine.";
+  const queryElapsedLabel = `Elapsed ${(queryElapsedMs / 1000).toFixed(1)}s`;
   const filteredAgendas = agendas.filter((item) => {
     const query = agendaQuery.trim().toLowerCase();
     const matchesQuery = !query || item.code.toLowerCase().includes(query) || item.title.toLowerCase().includes(query);
@@ -2267,6 +2620,7 @@ function Assistant({ user }: { user: User }) {
     sessions: filteredSessions.filter((session) => conversationGroup(session.updated_at) === label),
   })).filter((group) => group.sessions.length);
   const canCreateAgenda = user.role === "authority" && !busy && Boolean(active) && hasCitedRagAnswer;
+  const canEditAgenda = Boolean(agenda && !agenda.is_read_only && agenda.current_owner_role === "DO" && ["DO_DRAFT", "RETURNED_TO_DO"].includes(agenda.state));
   const requiresHandoffTarget = agenda?.state === "DO_DRAFT" || agenda?.state === "RETURNED_TO_DO" || agenda?.state === "SUBMITTED_TO_NO";
   const handoffDisabledReason = agenda?.is_read_only
     ? `Handoff actions are locked while active owner is ${agenda.current_owner_name}.`
@@ -2320,7 +2674,7 @@ function Assistant({ user }: { user: User }) {
           <label className="conversation-search"><Search/><input value={conversationQuery} onChange={(event) => setConversationQuery(event.target.value)} placeholder="Search conversations…" /></label>
           <div className="conversation-filters" role="group" aria-label="Conversation date filter"><button className={conversationFilter === "all" ? "selected" : ""} onClick={() => setConversationFilter("all")}>All</button><button className={conversationFilter === "today" ? "selected" : ""} onClick={() => setConversationFilter("today")}>Today</button><button className={conversationFilter === "week" ? "selected" : ""} onClick={() => setConversationFilter("week")}>This week</button></div>
           <div className="conversation-scroll">
-            {workspaceError ? <DataState tone="error" title="AI Assistant is temporarily unavailable." detail="Your conversations could not be loaded. Try again." action={{ label: "Retry", onClick: () => void load().catch(() => undefined) }} /> : workspaceLoading ? <div className="conversation-skeleton" aria-label="Loading conversations"><span/><span/><span/></div> : sessionGroups.length ? sessionGroups.map((group) => <section className="conversation-group" key={group.label}><small>{group.label}</small>{group.sessions.map((session) => <button className={active === session.chat_session_id ? "current conversation-item" : "conversation-item"} onClick={() => void choose(session.chat_session_id).catch(() => setError("Unable to open this conversation."))} onContextMenu={(event) => { event.preventDefault(); const menuWidth = 224; const menuHeight = 148; setConversationContextMenu({ session, x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)) }); }} key={session.chat_session_id}><MessageSquare/><span><b>{session.title}</b></span><time>{formatRelativeConversationTime(session.updated_at)}</time></button>)}</section>) : <p>{sessions.length ? "No conversations match this filter." : "Start a conversation to create a saved thread."}</p>}
+            {workspaceError ? <DataState tone="error" title="AI Assistant is temporarily unavailable." detail="Your conversations could not be loaded. Try again." action={{ label: "Retry", onClick: () => void load().catch(() => undefined) }} /> : workspaceLoading ? <div className="conversation-skeleton" aria-label="Loading conversations"><span/><span/><span/></div> : sessionGroups.length ? sessionGroups.map((group) => <section className="conversation-group" key={group.label}><small>{group.label}</small>{group.sessions.map((session) => <button className={active === session.chat_session_id ? "current conversation-item" : "conversation-item"} onClick={() => void choose(session.chat_session_id).catch(() => setError("Unable to open this conversation."))} onContextMenu={(event) => { event.preventDefault(); const menuWidth = 224; const menuHeight = 148; setConversationContextMenu({ session, x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)) }); }} key={session.chat_session_id}><MessageSquare/><span><b>{session.title}</b></span><time>{formatRelativeConversationTime(session.updated_at)}</time></button>)}</section>) : <DataState tone="empty" title={sessions.length ? "No conversations match this filter." : "No conversations yet."} detail={sessions.length ? "Try another date filter or search term." : "Start a conversation to create a saved thread."} />}
           </div>
           <button className="manage-documents" onClick={manageDocuments}><CloudUpload/>Manage documents</button>
         </> : <>
@@ -2330,7 +2684,7 @@ function Assistant({ user }: { user: User }) {
             {(["all", "draft", "pending", "approved"] as const).map((filter) => <button type="button" className={agendaFilter === filter ? "selected" : ""} onClick={() => setAgendaFilter(filter)} key={filter}>{filter === "all" ? "All" : filter[0].toUpperCase() + filter.slice(1)}</button>)}
           </div>
           <div className="agenda-scroll">
-            {workspaceError ? <DataState tone="error" title="This agenda could not be loaded." detail="The workflow list is temporarily unavailable. Try again." action={{ label: "Retry", onClick: () => void load().catch(() => undefined) }} /> : workspaceLoading ? <div className="agenda-skeleton" aria-label="Loading agendas"><span/><span/><span/></div> : filteredAgendas.length ? filteredAgendas.map((item) => <button className={agenda?.agenda_id === item.agenda_id ? "current agenda-card" : "agenda-card"} onClick={() => void chooseAgenda(item.agenda_id)} key={item.agenda_id}><span className="agenda-card-main"><b>{item.code}</b><strong>{item.title}</strong></span><span className={`agenda-status-chip ${agendaStatusBucket(item.state)}`}>{agendaStatusLabel(item.state)}</span><time>{formatWorkflowTime(item.updated_at)}</time></button>) : <p>{agendas.length ? "No agendas match this filter." : "No agenda is assigned to your role."}</p>}
+            {workspaceError ? <DataState tone="error" title="This agenda could not be loaded." detail="The workflow list is temporarily unavailable. Try again." action={{ label: "Retry", onClick: () => void load().catch(() => undefined) }} /> : workspaceLoading ? <div className="agenda-skeleton" aria-label="Loading agendas"><span/><span/><span/></div> : filteredAgendas.length ? filteredAgendas.map((item) => <button className={agenda?.agenda_id === item.agenda_id ? "current agenda-card" : "agenda-card"} onClick={() => void chooseAgenda(item.agenda_id)} key={item.agenda_id}><span className="agenda-card-main"><b>{item.code}</b><strong>{item.title}</strong></span><span className={`agenda-status-chip ${agendaStatusBucket(item.state)}`}>{agendaStatusLabel(item.state)}</span><time>{formatWorkflowTime(item.updated_at)}</time></button>) : <DataState tone="empty" title={agendas.length ? "No agendas match this filter." : "No agendas assigned."} detail={agendas.length ? "Try another search or status filter." : "Official agendas will appear here when they are assigned to your role."} />}
           </div>
          </>}
          <ResizableSplitter
@@ -2379,15 +2733,15 @@ function Assistant({ user }: { user: User }) {
                 return <div className="workflow-step-wrap" key={step.key}><div className={`workflow-step ${status}`} aria-current={status === "current" ? "step" : undefined} title={`${step.label}: ${statusLabel}`}><span className="workflow-step-icon" aria-hidden="true">{status === "completed" ? <Check/> : <span className={`workflow-step-marker ${status}`}/>}</span><span><b>{step.label}</b><small>{assignee}</small><em className="workflow-step-status">{statusLabel}</em></span></div>{index < steps.length - 1 && <i className={status === "completed" ? "completed" : ""} aria-hidden="true"/>}</div>;
               })}
             </div>
-            <div className={agenda.is_read_only ? "ownership-status locked" : "ownership-status"}><ShieldCheck/><span><b>● Active owner: {agenda.current_owner_name}</b><small>{agenda.is_read_only ? "Review-only access." : "You can edit this draft and perform the next authorized handoff."}</small></span><strong>Current stage: {workflowStageLabel(agenda.state)} · Step {Math.min(workflowStageIndex(agenda.state) + 1, 3)} of 3</strong></div>
+            <div className={agenda.is_read_only ? "ownership-status locked" : "ownership-status"}><ShieldCheck/><span><b>● Active owner: {agenda.current_owner_name}</b><small>{agenda.is_read_only ? "Review-only access." : canEditAgenda ? "You can edit this draft and perform the next authorized handoff." : "You can perform the next authorized handoff."}</small></span><strong>Current stage: {workflowStageLabel(agenda.state)} · Step {Math.min(workflowStageIndex(agenda.state) + 1, 3)} of 3</strong></div>
             <div className="ai-evidence-status"><Sparkles/><span>Supporting document evidence is available for cited questions.</span></div>
           </section>
           {agenda.context_capsules?.length ? <div className="workflow-document-toolbar"><span>Evidence ({agenda.context_capsules.length})</span><small>Agenda evidence snapshots</small></div> : null}
-          {showDraft && <div className="agenda-draft"><header><div><b>Official draft · v{agenda.editing_version}</b><span>{agenda.is_read_only ? "View-only draft" : draftEditing ? "Editing is enabled for your role." : "Review the current official draft."}</span></div>{!agenda.is_read_only && <button type="button" className="draft-edit-toggle" onClick={() => setDraftEditing((value) => !value)}>{draftEditing ? "Stop editing" : "Edit draft"}</button>}</header><textarea readOnly={!draftEditing || agenda.is_read_only} disabled={agenda.is_read_only} value={agendaDraft} onChange={(e) => setAgendaDraft(e.target.value)} /><footer>{!agenda.is_read_only && draftEditing && <button disabled={busy || !agendaDraft.trim()} onClick={saveAgendaDraft}>Save v{agenda.editing_version + 1}</button>}</footer></div>}
+          {showDraft && <div className="agenda-draft"><header><div><b>Official draft · v{agenda.editing_version}</b><span>{!canEditAgenda ? "View-only draft" : draftEditing ? "Editing is enabled for your role." : "Review the current official draft."}</span></div>{canEditAgenda && <button type="button" className="draft-edit-toggle" onClick={() => setDraftEditing((value) => !value)}>{draftEditing ? "Stop editing" : "Edit draft"}</button>}</header><textarea readOnly={!draftEditing || !canEditAgenda} disabled={!canEditAgenda} value={agendaDraft} onChange={(e) => setAgendaDraft(e.target.value)} /><footer>{canEditAgenda && draftEditing && <button disabled={busy || !agendaDraft.trim()} onClick={saveAgendaDraft}>Save v{agenda.editing_version + 1}</button>}</footer></div>}
           <div className="workflow-messages">
             {agenda.context_capsules?.map((capsule) => <details className="workflow-evidence-item" key={capsule.capsule_id}><summary><span className="workflow-avatar system-avatar"><FileText/></span><span><b>Agenda evidence snapshot · v{capsule.version}</b><small>{formatEvidenceCreated(capsule.created_at)}</small></span><ChevronDown/></summary><div className="workflow-evidence-details"><p>{capsule.summary}</p><small>Workflow state: {agendaStatusLabel(capsule.state)}</small><CitationList sources={capsule.sources}/></div></details>)}
-            {workflowMessages.map((message) => <article className={message.message_type.toLowerCase()} key={message.message_id}><header><div className="workflow-sender"><span className={`workflow-avatar ${message.message_type === "AI" ? "system-avatar" : "human-avatar"}`}>{message.message_type === "AI" ? <Sparkles/> : personInitials(message.sender_name)}</span><span><b>{message.message_type === "AI" ? "Port RAG AI Assistant" : message.sender_name}</b><small>{message.message_type === "AI" ? "Grounded response" : message.message_type.replaceAll("_", " ")}</small></span></div><time title={message.created_at}>{formatWorkflowTime(message.created_at)}</time></header>{message.message_type === "AI" ? renderMarkdown(message.content) : <p>{message.content}</p>}<CitationList sources={message.sources}/>{message.message_type === "AI" && <div className="response-actions" aria-label="Response actions"><button type="button" onClick={() => void copyResponse(message.content)}><Copy/>Copy</button><button type="button" aria-label="Helpful answer" onClick={() => setNotice("Thanks for the feedback.")}><ThumbsUp/></button><button type="button" aria-label="Unhelpful answer" onClick={() => setNotice("Thanks for the feedback.")}><ThumbsDown/></button></div>}</article>)}
-            {queryBusy && <div className="workflow-ai-thinking" role="status" aria-live="polite"><span className="workflow-avatar system-avatar"><Sparkles/></span><div><b>Port RAG AI Assistant</b><p>Reviewing supporting documents and preparing a response…</p><span className="thinking-dots" aria-hidden="true"><i/><i/><i/></span></div></div>}
+            {workflowMessages.map((message) => <article className={`${message.message_type.toLowerCase()}${message.message_type === "AI" ? " answer-arrival" : ""}`} key={message.message_id}><header><div className="workflow-sender"><span className={`workflow-avatar ${message.message_type === "AI" ? "system-avatar" : "human-avatar"}`}>{message.message_type === "AI" ? <Sparkles/> : personInitials(message.sender_name)}</span><span><b>{message.message_type === "AI" ? "Port RAG AI Assistant" : message.sender_name}</b><small>{message.message_type === "AI" ? "Grounded response" : message.message_type.replaceAll("_", " ")}</small></span></div><time title={message.created_at}>{formatWorkflowTime(message.created_at)}</time></header>{message.message_type === "AI" ? renderMarkdown(message.content) : <p>{message.content}</p>}<CitationList sources={message.sources}/>{message.message_type === "AI" && <div className="response-actions" aria-label="Response actions"><button type="button" onClick={() => void copyResponse(message.content)}><Copy/>Copy</button><button type="button" aria-label="Helpful answer" onClick={() => setNotice("Thanks for the feedback.")}><ThumbsUp/></button><button type="button" aria-label="Unhelpful answer" onClick={() => setNotice("Thanks for the feedback.")}><ThumbsDown/></button></div>}</article>)}
+            {queryBusy && <div className="workflow-ai-thinking" role="status" aria-live="polite"><span className="workflow-avatar system-avatar"><Sparkles/></span><div><b>Port RAG AI Assistant</b><p>{queryStatus}</p><small className="query-elapsed">{queryElapsedLabel}</small><span className="thinking-dots" aria-hidden="true"><i/><i/><i/></span></div></div>}
             {!workflowMessages.length && !agenda.context_capsules?.length && !queryBusy && <div className="thread-empty"><Sparkles/><b>No discussion yet</b><span>Ask AI about this agenda or continue the workflow by assigning it to the next authorized officer.</span></div>}
           </div>
           {agenda.is_read_only ? <div className="workflow-readonly-state" role="status"><ShieldCheck/><div><b>Read-only thread</b><span>This agenda is currently owned by {agenda.current_owner_name}.</span><small>You can review the discussion and cited evidence.</small></div></div> : <><form className="workflow-composer" onSubmit={send}><button type="button" onClick={manageDocuments} aria-label="Manage documents"><Paperclip/></button><input disabled={workspaceLoading} placeholder="Ask AI about this agenda…" value={question} onChange={(e) => setQuestion(e.target.value)}/><button type={queryBusy ? "button" : "submit"} className={queryBusy ? "stop-query" : ""} onClick={queryBusy ? stopRequest : undefined} disabled={queryBusy ? false : !ragReady || !question.trim()}>{queryBusy ? <><span className="stop-icon" aria-hidden="true"/>Stop</> : <><Send/>Ask AI</>}</button></form>{composerDisabledReason && !queryBusy && <small className="workflow-composer-help">{composerDisabledReason}</small>}</>}
@@ -2397,25 +2751,27 @@ function Assistant({ user }: { user: User }) {
             {!workspaceLoading && workspaceError && <DataState tone="error" title="AI Assistant is temporarily unavailable." detail="Your workspace could not be loaded. Try again from the conversation panel." />}
             {!workspaceLoading && !workspaceError && !messages.length && <div className="assistant-welcome enterprise-empty-state"><div className="empty-icon"><Sparkles/></div><div><small>PORT RAG AI ASSISTANT</small><h2>Ask about trusted port documents</h2><p>{corpusState?.documents ? "Search indexed policies, rules and documents, get cited answers, and create an agenda." : "The indexed corpus is empty. Add documents before asking a policy question."}</p></div></div>}
             {messages.map((message, index) => <article className={message.sender} key={`${message.created_at || "message"}-${index}`}><div className="message-meta">{message.sender === "assistant" ? <><span className="message-avatar assistant-avatar" aria-hidden="true"><Sparkles/></span><b>Port RAG AI Assistant</b></> : <span className="message-avatar user-avatar" aria-label={user.name} title={user.name}>{personInitials(user.name)}</span>}{message.created_at && <time dateTime={message.created_at}>{formatChatTime(message.created_at)}</time>}</div>{message.sender === "assistant" ? renderMarkdown(message.content) : <p>{message.content}</p>}<CitationList sources={message.sources}/>{message.sender === "assistant" && <div className="response-actions" aria-label="Response actions"><button type="button" onClick={() => void copyResponse(message.content)}><Copy/>Copy</button><button type="button" aria-label="Helpful answer" onClick={() => setNotice("Thanks for the feedback.")}><ThumbsUp/></button><button type="button" aria-label="Unhelpful answer" onClick={() => setNotice("Thanks for the feedback." )}><ThumbsDown/></button></div>}</article>)}
-            {queryBusy && <div className="assistant-thinking" role="status" aria-live="polite"><span className="message-avatar assistant-avatar" aria-hidden="true"><Sparkles/></span><div><b>Port RAG AI Assistant</b><p>Searching indexed documents…</p><p>Generating a grounded answer…</p><span className="thinking-dots" aria-hidden="true"><i/><i/><i/></span></div></div>}
+            {queryBusy && <div className="assistant-thinking" role="status" aria-live="polite"><span className="message-avatar assistant-avatar" aria-hidden="true"><Sparkles/></span><div><b>Port RAG AI Assistant</b><p>{queryStatus}</p><small className="query-elapsed">{queryElapsedLabel}</small><span className="thinking-dots" aria-hidden="true"><i/><i/><i/></span></div></div>}
             <div ref={messagesEndRef}/>
             {!isAtLatest && messages.length > 0 && <button className="jump-latest" type="button" onClick={() => { setIsAtLatest(true); messagesEndRef.current?.scrollIntoView({ block: "end" }); }}>↓ Jump to latest</button>}
           </div>
           <div className="suggested-prompts composer-suggestions">{assistantSuggestions.slice(0, 3).map((suggestion) => <button type="button" key={suggestion} onClick={() => setQuestion(suggestion)}>{suggestion}</button>)}</div>
-          <form className="chat-composer" onSubmit={send}>
-            <div className="composer-input-row"><textarea ref={composerInputRef} disabled={workspaceLoading} rows={1} onKeyDown={handleComposerKeyDown} placeholder="Ask about port policies or documents…" value={question} onChange={(event) => setQuestion(event.target.value)}/></div>
+          <form className={`chat-composer${voiceListening ? " voice-active" : ""}`} onSubmit={send}>
+            <div className="composer-input-row"><textarea ref={composerInputRef} disabled={workspaceLoading} rows={1} onKeyDown={handleComposerKeyDown} placeholder={voiceListening ? "Work with AI-Powered Port Management System" : "Ask about port policies or documents…"} value={question} onChange={(event) => setQuestion(event.target.value)}/></div>
             <div className="composer-controls-row">
-              <div className="composer-tools"><button type="button" onClick={manageDocuments} aria-label="Manage documents"><Paperclip/></button><button type="button" aria-label="Voice input is not enabled" title="Voice input is not enabled"><Mic/></button></div>
+              <div className="composer-tools"><button type="button" onClick={manageDocuments} aria-label={t("Add files or manage documents")} data-tooltip={t("Add files or manage documents")}><Plus/></button><button type="button" className={voiceListening ? "voice-input active" : "voice-input"} onClick={toggleVoiceInput} disabled={workspaceLoading || busy} aria-pressed={voiceListening} aria-keyshortcuts="Control+Shift+D" aria-label={voiceListening ? "Stop voice input" : voiceSupported === false ? "Voice input is not supported in this browser" : "Start voice input"} title={voiceListening ? "Stop voice input" : voiceSupported === false ? "Voice input is not supported in this browser" : "Click to dictate (Ctrl+Shift+D)"}>{voiceListening ? <X/> : <Mic/>}</button></div>
+              {voiceListening && <span className="composer-voice-status" role="status" aria-live="polite"><span ref={voiceWaveRef} className={`composer-voice-wave${voiceAudioLive ? " voice-wave-live" : ""}`} aria-hidden="true">{Array.from({ length: 64 }, (_, index) => <i key={index}/>)}</span><span className="composer-voice-status-label">{t("Transcribing")}</span></span>}
               <div className="composer-settings">
                 <button type="button" className="composer-settings-toggle" aria-expanded={showComposerSettings} aria-label="Composer settings" onClick={() => setShowComposerSettings((value) => !value)}><Settings2/><span>Settings</span></button>
                 <div className={`composer-settings-controls${showComposerSettings ? " open" : ""}`}>
                   <label className="model-select" title={llmModel || "Local answer model unavailable"}><select aria-label="Local answer model" disabled={!localLlmCatalog.models.length || busy} value={llmModel} onChange={(event) => setLlmModel(event.target.value)}>{localLlmCatalog.models.length ? localLlmCatalog.models.map((model) => <option value={model} key={model}>{model}</option>) : <option>Local models unavailable</option>}</select><ChevronDown/></label>
-                  <label className="context-select" title="Choose a document context"><select aria-label="Document context" value={selectedContext} onChange={(event) => { const value = event.target.value; setSelectedContext(value); if (value === "billing") openBillingForecast(); if (value === "tender") openTenderPublication(); }}>{assistantContextOptions.map((option) => <option value={option.value} disabled={!option.available} key={option.value}>{option.label}</option>)}</select><ChevronDown/></label>
+                  <label className="context-select" title="Choose an optional task workflow. Document chat searches all documents you are permitted to access."><select aria-label="Task context" value={selectedContext} onChange={(event) => { const value = event.target.value; setSelectedContext(value); if (value === "billing") openBillingForecast(); if (value === "tender") openTenderPublication(); }}>{assistantContextOptions.map((option) => <option value={option.value} disabled={!option.available} key={option.value}>{option.label}</option>)}</select><ChevronDown/></label>
                 </div>
               </div>
-              <button type={queryBusy ? "button" : "submit"} className={queryBusy ? "stop-query" : ""} onClick={queryBusy ? stopRequest : undefined} disabled={queryBusy ? false : !ragReady || !question.trim()}>{queryBusy ? <><span className="stop-icon" aria-hidden="true"/>Stop</> : <><Send/>Ask AI</>}</button>
+              {voiceListening && <button type="button" className="voice-transcription-stop" onClick={stopVoiceInput} aria-label="Stop voice input" title="Stop voice input"><span className="stop-icon" aria-hidden="true"/></button>}
+              <button type={queryBusy ? "button" : "submit"} className={queryBusy ? "stop-query" : ""} onClick={queryBusy ? stopRequest : undefined} disabled={queryBusy ? false : !ragReady || !question.trim()} aria-label={queryBusy ? "Stop request" : "Ask AI"} title={queryBusy ? "Stop request" : "Ask AI"}>{queryBusy ? <span className="stop-icon" aria-hidden="true"/> : <span className="composer-submit-icon" aria-hidden="true"><ArrowUp/></span>}</button>
             </div>
-          </form><small className="grounding-note"><ShieldCheck/> Answers are grounded in the indexed corpus and include available citations.</small>
+          </form>{voiceError && <small className="voice-input-hint" role="status">{voiceError}</small>}<small className="grounding-note"><ShieldCheck/> Answers are grounded in the indexed corpus and include available citations.</small>
         </>}
         {(error || notice) && <p className={error ? "error" : "notice"}>{error || notice}</p>}
        </section>
@@ -2468,4 +2824,8 @@ function Assistant({ user }: { user: User }) {
     {showTenderPublication && <TenderPublicationModal onClose={() => { setShowTenderPublication(false); setSelectedContext("all"); }} />}
   </section>;
 }
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <I18nProvider>
+    <App />
+  </I18nProvider>,
+);

@@ -103,8 +103,20 @@ def _evaluate_gold(args: argparse.Namespace) -> None:
     print(f"csv={csv_path.resolve()}")
 
 
+def _evaluate_generation_stability(args: argparse.Namespace) -> None:
+    from .evaluation import run_generation_stability
+
+    output_path, payload = run_generation_stability(
+        Settings(), Path(args.gold), Path(args.output), repetitions=args.repetitions
+    )
+    print(f"complete_context_questions={payload['summary']['complete_context_questions']}")
+    print(f"all_answers_identical={payload['summary']['all_answers_identical']}")
+    print(f"all_final_citation_valid={payload['summary']['all_final_citation_valid']}")
+    print(f"json={output_path.resolve()}")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Corpus-aware PDF inspection for portproject")
+    parser = argparse.ArgumentParser(description="Corpus-aware PDF inspection for AI PMS")
     commands = parser.add_subparsers(required=True)
     inspect_parser = commands.add_parser("inspect")
     inspect_parser.add_argument("corpus")
@@ -142,10 +154,15 @@ def main() -> None:
     table_parser.add_argument("--max-pages", type=int, default=40)
     table_parser.set_defaults(handler=_table_experiment)
     evaluate_parser = commands.add_parser("evaluate-gold", help="Measure the current pipeline against a reviewed golden set")
-    evaluate_parser.add_argument("--gold", default="evaluation/rag_gold_v1.json")
+    evaluate_parser.add_argument("--gold", default="evaluation/rag_answer_contract_v2.json")
     evaluate_parser.add_argument("--output", default="artifacts/evaluation/rag_baseline_v1")
     evaluate_parser.add_argument("--no-generation", action="store_true", help="Run retrieval metrics only")
     evaluate_parser.set_defaults(handler=_evaluate_gold)
+    stability_parser = commands.add_parser("evaluate-generation-stability", help="Repeat deterministic generation only for evidence-complete gold cases")
+    stability_parser.add_argument("--gold", default="evaluation/rag_answer_contract_v2.json")
+    stability_parser.add_argument("--output", default="artifacts/evaluation/rag_generation_stability.json")
+    stability_parser.add_argument("--repetitions", type=int, default=2)
+    stability_parser.set_defaults(handler=_evaluate_generation_stability)
     args = parser.parse_args()
     args.handler(args)
 

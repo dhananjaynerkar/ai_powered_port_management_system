@@ -11,6 +11,12 @@ def test_request_id_accepts_bounded_safe_values() -> None:
     assert generated.isalnum()
 
 
+def test_database_url_has_bounded_connection_timeout() -> None:
+    settings = Settings(database_url="postgresql://phase13@127.0.0.1:9/phase13")
+
+    assert "connect_timeout=5" in (settings.database_url.query or "")
+
+
 def test_ready_returns_stable_not_ready_payload_when_database_check_fails(monkeypatch) -> None:
     api.app.state.settings = Settings()
     api.app.state.rag_ready = True

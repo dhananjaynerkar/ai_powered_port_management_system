@@ -25,6 +25,13 @@ _BLOCKED_PATTERNS = tuple(
     )
 )
 
+_CITATION_GROUP = re.compile(r"\[\s*(S\d+(?:\s*[,;]\s*S\d+)*)\s*\]", re.IGNORECASE)
+_SAFE_NO_EVIDENCE = {
+    "the indexed corpus does not contain enough evidence to answer this question",
+    "i couldn't find that information in the documents available to you",
+    "i could not find that information in the documents available to you",
+}
+
 
 def validate_query(settings: Settings, text: str) -> GuardrailDecision:
     cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", text or "").strip()
@@ -37,11 +44,35 @@ def validate_query(settings: Settings, text: str) -> GuardrailDecision:
     return GuardrailDecision(True, cleaned)
 
 
+def normalize_citation_syntax(answer: str) -> str:
+    """Canonicalize safe bracketed source lists without adding any source ID.
+
+    The model may render the same retrieved citations as ``[S1, S2]`` or
+    ``[S1; S2]``.  Converting those forms to ``[S1][S2]`` keeps the public
+    citation component and the validator on one exact representation.  Text
+    that is not a simple list of source IDs is left unchanged.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        ids = re.findall(r"S\d+", match.group(1), flags=re.IGNORECASE)
+        return "".join(f"[{source_id.upper()}]" for source_id in ids)
+
+    return _CITATION_GROUP.sub(replace, answer or "")
+
+
 def referenced_source_ids(answer: str) -> set[str]:
-    return set(re.findall(r"\[(S\d+)\]", answer or ""))
+    return set(re.findall(r"\[(S\d+)\]", normalize_citation_syntax(answer), flags=re.IGNORECASE))
+
+
+def is_safe_no_evidence_response(answer: str) -> bool:
+    """Recognize only the application's fixed non-factual refusal messages."""
+    normalized = re.sub(r"[.!?]+$", "", " ".join((answer or "").casefold().split()))
+    return normalized in _SAFE_NO_EVIDENCE
 
 
 def validate_citations(answer: str, valid_source_ids: set[str]) -> tuple[bool, str | None]:
+    if is_safe_no_evidence_response(answer):
+        return True, None
     cited = referenced_source_ids(answer)
     unknown = cited - valid_source_ids
     if unknown:

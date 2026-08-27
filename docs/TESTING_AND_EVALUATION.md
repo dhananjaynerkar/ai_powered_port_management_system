@@ -14,9 +14,13 @@ Set-Location web
 npm run build
 ```
 
-At the Phase 16 checkpoint, the full Python suite completed with **48 passed**
-in the active environment. That result is an observed checkpoint, not a promise
-that a new machine has the same database, Ollama models, or fixture artifacts.
+The latest local checkpoint is recorded in
+`docs/hardening/RAG_CAPACITY_RESOURCE_CERTIFICATION.md`: the non-acceptance
+suite completed with **102 passed and 28 skipped**. That result is an observed
+checkpoint, not a promise that a new machine has the same database, Ollama
+models, or fixture artifacts. The skipped tests are environment/acceptance
+dependent and are not counted as passes. The guarded Phase 08/09 acceptance
+suite is a separate **21-test** run against `portproject_acceptance`.
 
 ## Test areas
 
@@ -26,6 +30,7 @@ that a new machine has the same database, Ollama models, or fixture artifacts.
 | Database migration | `test_database_migration.py` |
 | Dashboard/tenants | `test_authority_metrics.py`, `test_tenant_pagination.py` |
 | RAG/ingestion | `test_inspection.py`, `test_strategy.py`, corpus/evaluation tests |
+| Capacity/resilience | `test_rag_capacity.py`, `test_resilience_observability.py`, and `scripts/rag_capacity_profile.py` |
 | Chat/guardrails | `test_chat_payload.py`, `test_guardrails.py` |
 | Billing | `test_billing_service.py` and Phase 10 validation report |
 | Tender | `test_tender_workflow.py` and Phase 11 persistence report |

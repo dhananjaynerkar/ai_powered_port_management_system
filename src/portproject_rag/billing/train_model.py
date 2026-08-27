@@ -4,6 +4,7 @@ The exported model predicts log1p(base_amount). The browser reverses that transf
 with expm1, then applies the tax formulas deterministically.
 """
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,14 @@ MODEL_PATH = PUBLIC_DIR / 'billing_xgb_model.json'
 MANIFEST_PATH = PUBLIC_DIR / 'billing_model_manifest.json'
 RANDOM_STATE = 42
 VALIDATION_CUTOFF = 2025 * 12 + 1
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest().upper()
 
 REQUIRED_COLUMNS = [
     'src_customerid', 'src_billyearmonth', 'src_billchargeid', 'src_amount',
@@ -205,6 +214,15 @@ def main() -> None:
     production_model.fit(x_all, np.log1p(pairs['target_amount']), verbose=False)
     production_model.save_model(MODEL_PATH)
     manifest = {
+        'model_version': 'billing-xgb-v1',
+        'feature_schema_version': 'billing-features-v1',
+        'runtime_evaluator_version': 'XgbJsonModel-v1',
+        'artifact_sha256': sha256_file(MODEL_PATH),
+        'training_dataset_sha256': sha256_file(DATA_PATH),
+        'formula_sha256': sha256_file(FORMULA_PATH),
+        'training_pair_count': int(len(pairs)),
+        'validation_method': 'time split on target_period_index >= 2025-01',
+        'training_date': None,
         'feature_columns': list(x_train.columns),
         'base_features': BASE_FEATURES,
         'metrics': report,

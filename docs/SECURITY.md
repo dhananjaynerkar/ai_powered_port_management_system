@@ -27,8 +27,18 @@ Logout revokes the current session.
   principal's chat.
 - Workflow-linked private chats cannot be deleted because that would remove
   provenance from an official record.
-- Retrieval applies document ACL roles before context reaches the local model;
-  unauthorized evidence is not returned as citations.
+- Lexical and dense retrieval apply document ACL roles before RRF and
+  CrossEncoder reranking; unauthorized candidates are not returned as
+  citations. Adjacent-page and parent/context expansion also join
+  `chunk_acl` and apply the same public-or-current-role predicate before the
+  row is assembled into model context. The acceptance suite includes a
+  mixed-ACL document and proves that restricted neighbours are excluded for a
+  tenant-role query. This is evidence for the implemented paths, not a claim
+  that future retrieval code can bypass the shared authorization boundary.
+- Heavy RAG requests use a bounded process-local gate (one active pipeline and
+  one waiter in the local profile). Capacity rejection happens before any chat
+  or agenda persistence, and the safe response does not reveal host memory,
+  model, or database details.
 
 ## Deployment modes
 
@@ -59,7 +69,8 @@ not silently rewrite source-system passwords.
 
 ## Remaining gate
 
-The code-level security contract is covered by settings/auth regression tests.
-Production promotion still requires an approved HTTPS deployment, least-
-privilege database role, source-credential decision, and authenticated
+The code-level security contract is covered by settings/auth regression tests
+and the acceptance mixed-ACL context-expansion regression. Production
+promotion still requires an approved HTTPS deployment, least-privilege
+database role, source-credential decision, and an authenticated
 cross-principal acceptance run.

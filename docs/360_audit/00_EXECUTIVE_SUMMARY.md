@@ -5,7 +5,7 @@
 This is an audit-only report created from the supplied audit prompt. It is based
 on the target checkout. The local filesystem path is intentionally omitted from
 the public repository copy.
-The separate AI_PMS checkout was treated as a reference only and was not used
+The separate AI PMS checkout was treated as a reference only and was not used
 as a runtime dependency.
 
 Evidence sources include Python/React source, pyproject.toml, package manifests,
@@ -16,7 +16,7 @@ included.
 
 ## What the project is
 
-PortProject RAG Portal is a local-first React/Vite and FastAPI portal for a Port
+AI-Powered Port Management System is a local-first React/Vite and FastAPI portal for a Port
 Management System. It authenticates existing Authority and Tenant database
 accounts, exposes live land and applicant-property mapping views, answers
 document questions with page citations, and supports governed agenda, billing,

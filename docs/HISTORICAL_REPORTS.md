@@ -11,6 +11,7 @@ release decisions live in the top-level documents linked from `README.md`.
 | `docs/360_audit/` | Historical 360-degree audit package and its original evidence index. |
 | `docs/system_verification/` | Historical end-to-end verification and release-gate records. |
 | `docs/hardening/PHASE_*.md` | Evidence report for the named hardening phase; phase reports are not a substitute for the current source-of-truth documents. |
+| `docs/release/FINAL_RELEASE_GATE.md` | Current Phase 18 release decision record; it is not a feature source-of-truth contract and becomes historical when a newer gate supersedes it. |
 | `docs/AUDIT_*.md`, `docs/IMPLEMENTATION_AUDIT.md`, `docs/EVALUATION_REPORT.md`, and similar dated/integration notes | Historical or feature-specific evidence unless explicitly linked as current by the top-level docs. |
 
 When an older report conflicts with current code or the current documentation

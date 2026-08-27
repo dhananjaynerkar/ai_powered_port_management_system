@@ -1,6 +1,6 @@
 # Prediction Part Integrated
 
-Integrated billing prediction and Port Land RAG chatbot project.
+Integrated billing prediction and AI PMS chatbot project.
 
 ## Project areas
 

@@ -1,7 +1,11 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
-from portproject_rag.evaluation import citation_metrics, retrieval_metrics
+from portproject_rag.evaluation import (
+    citation_metrics,
+    fact_coverage_metrics,
+    retrieval_metrics,
+)
 
 
 def _chunk(source_id: str, filename: str, page: int) -> SimpleNamespace:
@@ -50,3 +54,23 @@ def test_negative_case_requires_abstention_without_citations() -> None:
 
     assert metrics["citation_page_accuracy"] == 1.0
     assert metrics["citation_count"] == 0
+
+
+def test_fact_coverage_allows_only_reviewed_equivalent_evidence_sets() -> None:
+    example = {"id": "reviewed-case"}
+    requirements = {
+        "reviewed-case": [{
+            "fact_id": "transfer-charge",
+            "description": "Transfer needs approval and charges.",
+            "acceptable_evidence_sets": [
+                [{"filename": "policy.pdf", "page": 12}],
+                [{"filename": "policy.pdf", "page": 37}],
+            ],
+        }]
+    }
+
+    metrics = fact_coverage_metrics(example, [_chunk("S1", "policy.pdf", 12)], requirements)
+
+    assert metrics["fact_coverage"] == 1.0
+    assert metrics["complete_fact_evidence"] is True
+    assert metrics["facts"][0]["supported"] is True

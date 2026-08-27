@@ -11,7 +11,7 @@ Status: **PARTIAL — production dependency-failure exercise remains intentional
 - No credentials were created, guessed, submitted, or printed.
 - No billing, tender, chat, workflow, or document rows were created or changed by the probes.
 - Unavailable dependencies were simulated with loopback port `127.0.0.1:9`, temporary missing artifact paths, and in-process monkeypatches.
-- The live API was restarted only to load the verified code change. It recovered on `127.0.0.1:8001` and returned healthy/readiness responses afterward.
+- The isolated acceptance API was restarted only to load the verified code change. It recovered on `127.0.0.1:8016` and returned healthy/readiness responses afterward.
 
 ## Baseline observed before the change
 
@@ -23,12 +23,13 @@ The source inspection and controlled probes established these gaps:
 4. Successful audit writes occurred after several mutations. If the separate audit connection failed, the user could receive a 500 after the business mutation had already committed.
 5. RAG, billing, and tender failure paths did not consistently emit a semantic failure audit event. RAG failures were returned as 503s but were not audit-recorded.
 6. The frontend showed “Document search is still preparing” for every readiness failure, including a database outage or unavailable local AI dependency.
+7. A real unreachable PostgreSQL endpoint did not fail quickly enough during startup because the shared connection URLs had no bounded `connect_timeout`.
 
 ## Implemented changes
 
 ### API resilience and structured observability
 
-Implemented in `src/portproject_rag/api.py`:
+Implemented in `src/portproject_rag/api.py` and `src/portproject_rag/settings.py`:
 
 - Added bounded `X-Request-ID` handling. Safe IDs are echoed; unsafe/missing IDs are replaced with a generated UUID. Responses expose the ID for the local cross-origin UI.
 - Added JSON structured request records containing only `event`, request ID, method, path, status code, duration, and safe exception type. Request bodies, passwords, session tokens, prompts, and document text are not logged.
@@ -43,6 +44,7 @@ Implemented in `src/portproject_rag/api.py`:
 - Startup migration failure now leaves the process able to expose liveness/readiness (`database_migration_failed`) rather than failing before the lifespan yields. The application remains not ready and does not claim a false success.
 - Audit writes now include the current request ID when available. An audit-write failure is recorded as a structured `audit_write_failed` event and does not turn a previously committed business operation into a false 500.
 - Added failure audit events for login failure, RAG query failure (private and workflow), billing forecast failure, and tender workflow creation/transition failure. Only event type, safe operation identifiers, lengths, and exception class are recorded.
+- Added `database_connect_timeout_seconds` (default 5 seconds) and injects `connect_timeout` into the configured PostgreSQL URL when the operator has not supplied one. Existing database call sites therefore fail fast without a broad connection-wrapper rewrite.
 
 ### Frontend dependency state
 
@@ -70,6 +72,20 @@ Implemented in `web/src/main.tsx`:
 | Frontend loses backend | No authenticated disposable browser fixture is available | Full authenticated UI exercise is not claimed; source review confirms workspace error state and composer-disabled readiness state | BLOCKED |
 | Recovery after dependency returns | Live API restarted after verified source change; `/health` 200 and `/health/ready` 200 with `rag_ready=true` | Process/readiness recovery verified; actual PostgreSQL/Ollama stop-and-return remains untested | PARTIAL |
 
+### Additional controlled probe after the Phase 13 hardening
+
+The new regression test first failed because an unreachable URL had no timeout.
+After the settings fix, the test passed and the acceptance API started with the
+bounded URL. The acceptance API then returned `/health` HTTP 200 and
+`/health/ready` HTTP 200 with `rag_ready=true`; no operational database was
+used or modified.
+
+An additional isolated process was started with only its PostgreSQL host
+rewritten to loopback port `9`. It became reachable after the bounded startup
+attempt, returned `/health` HTTP 200, and returned `/health/ready` HTTP 503 with
+`{"init_error":"database_unavailable","rag_ready":false}`. The process was
+then stopped; the real PostgreSQL service was never stopped.
+
 ## Audit coverage after the change
 
 | Operation | Success event | Failure event / safe log |
@@ -84,14 +100,18 @@ Implemented in `web/src/main.tsx`:
 
 ## Validation performed
 
-- `python -m compileall -q src` — passed.
-- `ruff check src/portproject_rag/api.py tests/test_resilience_observability.py` — passed.
-- `npm --prefix web run build` — passed (`tsc -b` and Vite production build).
-- `.venv\Scripts\python.exe -m pytest -q` — **48 passed**.
-- Live API after restart:
-  - `GET http://127.0.0.1:8001/health` → HTTP 200 with `X-Request-ID`.
-  - `GET http://127.0.0.1:8001/health/ready` → HTTP 200, `rag_ready=true`, 48 documents, 1,474 pages, 3,399 chunks, 3,399 vectors, 0 pending, 1 quarantined.
+- `.venv\Scripts\python.exe -m pytest -q tests/test_resilience_observability.py` — **4 passed**.
+- `.venv\Scripts\python.exe -m pytest -q --tb=no` — **63 passed, 27 skipped** (acceptance tests are opt-in).
+- `ruff check src tests` — passed.
+- `npm run build` from `web` — passed (`tsc -b` and Vite production build).
+- Isolated acceptance API after restart:
+  - `GET http://127.0.0.1:8016/health` → HTTP 200, `database=portproject_acceptance`.
+  - `GET http://127.0.0.1:8016/health/ready` → HTTP 200, `rag_ready=true`, 4 documents, 4 pages, 4 chunks, 4 vectors, 0 pending.
+  - A safe request ID was echoed; an unsafe request ID was replaced with a generated identifier.
   - Runtime log contains JSON `request_completed` records with method/path/status/duration/request ID.
+- Isolated PostgreSQL-outage process:
+  - `/health` → HTTP 200 (liveness preserved).
+  - `/health/ready` → HTTP 503 with `database_unavailable` and `rag_ready=false`.
 
 ## Remaining risk / next authorized phase
 

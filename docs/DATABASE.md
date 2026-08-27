@@ -12,9 +12,9 @@ read-oriented views schemas.
 | Area | Owner | Access pattern |
 | --- | --- | --- |
 | `public.*` PMS identities, plots, mappings, and billing reference data | Existing PMS/source system | Read-only queries from the portal; no portal migration owns these tables. |
-| `rag.*` (or `PORTPROJECT_RAG_SCHEMA_NAME`) | PortProject RAG | Idempotent migration creates and maintains application state. |
-| `pms_doc.*` | PortProject RAG read views | Views over document records in the configured RAG schema. |
-| `pms_vector.*` | PortProject RAG read views | Views over chunks, embeddings, and ACL metadata. |
+| `rag.*` (or `PORTPROJECT_RAG_SCHEMA_NAME`) | AI PMS | Idempotent migration creates and maintains application state. |
+| `pms_doc.*` | AI PMS read views | Views over document records in the configured RAG schema. |
+| `pms_vector.*` | AI PMS read views | Views over chunks, embeddings, and ACL metadata. |
 | Files under `artifacts/` and tender runtime data | Local application/runtime | Rebuildable or source-exported artifacts; not a substitute for source-system backup. |
 
 ## Application-owned tables

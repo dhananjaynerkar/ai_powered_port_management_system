@@ -39,12 +39,20 @@ flowchart TD
   Q[User question] --> Guard[Guardrail]
   Guard --> Retrieve[Lexical + pgvector retrieval]
   Store --> Retrieve
-  Retrieve --> RRF[RRF + role ACL]
+  Retrieve --> ACL[Role ACL filter]
+  ACL --> RRF[RRF]
   RRF --> Rank[CrossEncoder rerank]
-  Rank --> Gen[Local qwen completion]
+  Rank --> Expand[ACL-filtered adjacent and parent context]
+  Expand --> Gen[Local qwen completion]
   Gen --> Cite[Citation validation]
   Cite --> Answer[Answer + page sources]
 ```
+
+ACLs are applied before RRF and reranking, and the adjacent/parent expansion
+repeats the public-or-current-role predicate before model context assembly.
+The acceptance suite includes a mixed-ACL document and verifies that a tenant
+does not receive restricted neighbouring pages. Citation validation remains a
+separate final check over the authorized result set.
 
 ## Authentication
 
@@ -110,7 +118,7 @@ flowchart LR
 ```mermaid
 flowchart TB
   PMS[Source PMS owner] --> Public[public.* tables]
-  Portal[PortProject RAG] --> Rag[rag.* application state]
+  Portal[AI PMS] --> Rag[rag.* application state]
   Portal --> Views[pms_doc / pms_vector views]
   Public --> API[FastAPI read adapters]
   Rag --> API

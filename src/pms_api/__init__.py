@@ -1,1 +1,1 @@
-"""Stable ASGI package for the Port Management System API."""
+"""Stable ASGI package for the AI PMS API."""

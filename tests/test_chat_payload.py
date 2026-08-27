@@ -46,5 +46,6 @@ def test_all_answer_routes_share_live_evidence_payload(monkeypatch) -> None:
         "fused_score": 0.03,
         "lexical_rank": 1,
         "dense_rank": 2,
+        "source_metadata": None,
     }
     json.dumps(payload)

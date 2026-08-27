@@ -1,4 +1,4 @@
-"""Billing forecast integration for the PortProject portal."""
+"""Billing forecast integration for the AI PMS portal."""
 
 from .prediction_service import (
     BillingPredictionRequest,

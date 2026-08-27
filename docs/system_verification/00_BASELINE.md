@@ -13,7 +13,7 @@ automated test uses an isolated temporary fixture.
   worktree can therefore be asserted.
 - The source inventory observed during the audit was 29 Python files under
   `src/` and one TypeScript/TSX application entrypoint under `web/src/`.
-- The target was not compared or merged with `AI_PMS`; that reference project
+- The target was not compared or merged with AI PMS; that reference project
   remains outside this audit's mutation scope.
 
 ## Runtime baseline

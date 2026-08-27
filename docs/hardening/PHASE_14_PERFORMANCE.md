@@ -1,10 +1,63 @@
 # Phase 14 — Performance Baseline and Targeted Optimization
 
-Date: 2026-08-25  
+Date: 2026-08-26 (acceptance re-check)  
 Project: `portproject_rag`  
-Status: **PARTIAL — baselines complete; measured RAG bottlenecks require a quality/infra decision before optimization**
+Status: **PARTIAL — acceptance read/calculation baselines are current; RAG reliability/quality-preserving optimization and a safe query-plan clone remain open**
 
-## Scope and safety boundary
+## Current acceptance re-check (2026-08-26)
+
+The measurements below were run after loading the private acceptance environment and checking the acceptance sentinel. The API was isolated on `127.0.0.1:8016`; the operational `portproject` database and its API were not used for these measurements.
+
+Acceptance safety evidence:
+
+- `current_database() = portproject_acceptance` and the fixture check reported `acceptance/1`.
+- The acceptance corpus contained 4 documents, 4 pages, 4 chunks, and 4 vectors, with no pending, processing, quarantined, or failed documents.
+- The acceptance tender path was `tests/runtime/tender/tender_workflows.json`, separate from operational storage.
+- The fixture was reset after the agenda-transition and complete-RAG probes, and the final fixture check passed.
+- No credentials, session cookies, tokens, password hashes, or database URLs were printed.
+
+### Current sequential measurements
+
+Each HTTP row has five warm samples after the acceptance API was ready. p95/p99 are interpolated and are directional at this sample count. Billing and tender rows call their deterministic services directly to avoid creating chat/audit rows; the agenda transition and complete-RAG probes were run against acceptance fixtures and then reset.
+
+| Operation | Warm p50 (ms) | Warm p95 (ms) | Warm p99 (ms) | Status | Evidence note |
+|---|---:|---:|---:|---|---|
+| `/health` | 4.47 | 9.34 | 10.23 | PASS | 5/5 HTTP 200 |
+| `/health/ready` | 49.32 | 173.85 | 174.81 | PASS | 5/5 HTTP 200; `rag_ready=true` |
+| Public corpus | 48.01 | 132.27 | 148.94 | PASS | 5/5 HTTP 200 |
+| Dashboard metrics | 177.12 | 199.44 | 200.27 | PASS | 5/5 authenticated HTTP 200 |
+| Tenant first page (25 rows) | 76.10 | 77.55 | 77.61 | PASS | 5/5 authenticated HTTP 200 |
+| Tenant filtered query (`Acceptance`) | 87.74 | 187.08 | 188.13 | PASS | 5/5 authenticated HTTP 200 |
+| Corpus state | 134.90 | 425.38 | 461.03 | PASS | 5/5 authenticated HTTP 200 |
+| Document list | 183.79 | 186.05 | 186.28 | PASS | 5/5 authenticated HTTP 200 |
+| Agenda list | 643.76 | 928.96 | 963.70 | PASS | 5/5 authenticated HTTP 200 |
+| Agenda detail | 301.30 | 407.32 | 408.71 | PASS | 5/5 authenticated HTTP 200 |
+| Billing prediction (direct service) | 44.62 | 154.54 | 155.24 | PASS | 5/5 deterministic acceptance inputs |
+| Tender calculation (direct service) | 0.43 | 8.28 | 9.84 | PASS | 5/5 deterministic acceptance inputs |
+| Agenda transition `DO_DRAFT → SUBMITTED_TO_NO` | 188.60 | — | — | PASS | one safe acceptance mutation; reset immediately afterward |
+
+### Current controlled read concurrency
+
+Four workers were used only for read paths. These are local probes, not capacity claims.
+
+| Operation | Requests | p50 (ms) | p95 (ms) | p99 (ms) | Statuses |
+|---|---:|---:|---:|---:|---|
+| Public corpus | 20 | 50.27 | 157.07 | 160.24 | 200 only |
+| Readiness | 20 | 49.23 | 149.39 | 155.78 | 200 only |
+| Dashboard metrics | 12 | 93.21 | 304.41 | 305.93 | 200 only |
+| Tenant first page | 12 | 85.81 | 234.88 | 281.87 | 200 only |
+
+All measured non-RAG acceptance paths stayed below the local targets defined below, including the agenda list at a directional p95 of 928.96 ms against a 1,000 ms target.
+
+### Current RAG observation
+
+One complete acceptance RAG call returned HTTP 200 in 25,329 ms with `citation_valid=true`, three candidates/sources, embedding 459 ms, lexical retrieval 24 ms, dense retrieval 2 ms, reranking 352 ms, context assembly 148 ms, generation 24,013 ms, and citation validation 1 ms. A second consecutive call returned HTTP 503 after approximately 25.95 seconds. This is not enough successful data for a p95/p99 claim and is recorded as a reliability gap, not hidden as a passing performance result. A standalone fresh-process retrieval probe also terminated in a native runtime access violation during reranker loading, so no fresh-process cold RAG number is claimed from that probe.
+
+No RAG model, reranker, candidate count, output budget, timeout, or prompt was changed. The observed model-stage behavior needs a paired quality/latency decision before optimization.
+
+## Historical operational baseline scope (2026-08-25)
+
+The remainder of this document preserves the earlier operational read-only baseline for comparison. It is not used as current acceptance evidence. The current acceptance evidence is the section above.
 
 This phase measured read-only application paths and pure calculation paths. No chat, agenda, workflow, billing, tender, or document rows were written by the benchmark.
 
@@ -143,5 +196,18 @@ No `EXPLAIN (ANALYZE, BUFFERS)` output is included. The only available database 
 - Real authenticated dashboard/tenant/agenda transition HTTP timings need an approved disposable account/fixture. Direct read-only service timings are evidence for the database paths but not a substitute for a full browser trace.
 - Database `EXPLAIN (ANALYZE, BUFFERS)` needs an approved safe clone.
 - RAG latency needs a quality-preserving optimization decision. The current baseline should be treated as CPU-local and not as a production SLO.
+
+## Current regression gate after the acceptance re-check
+
+- Acceptance fixture reset/check — **PASS**; final output was `ACCEPTANCE FIXTURE READY` with `portproject_acceptance` and `acceptance/1`.
+- Acceptance API `/health/ready` before shutdown — **PASS**; HTTP 200, `rag_ready=true`, 4 documents, 4 pages, 4 chunks, and 4 vectors.
+- Full Python suite — **PASS**, 64 passed, 27 skipped.
+- Ruff — **PASS**, `ruff check src tests`.
+- Frontend production build — **PASS**, TypeScript and Vite build completed successfully.
+- No source optimization was applied in this re-check, so no before/after code-change claim is made.
+
+### Phase result
+
+**PARTIAL.** The acceptance baseline and controlled read concurrency are reproducible and below the defined local targets for non-RAG paths. The RAG path has one successful cited response but a consecutive 503 and a fresh-process native reranker-load failure, so generation/retrieval p95/p99 and a safe optimization cannot honestly be marked complete. No approved clone exists for `EXPLAIN (ANALYZE, BUFFERS)`, and no optimization was applied without paired quality evidence.
 
 Phase 15 was not started.

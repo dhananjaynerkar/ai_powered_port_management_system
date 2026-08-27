@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import re
 import threading
 import uuid
@@ -31,7 +32,14 @@ class TenderWorkflowService:
         self.data_dir = self.project_root / "data"
         self.data2_dir = self.project_root / "data2"
         self.config_path = self.project_root / "config" / "tender_workflow.json"
-        self.storage_path = self.data_dir / "tender_workflows.json"
+        configured_storage = os.environ.get("PORTPROJECT_RAG_TENDER_STORAGE_PATH", "").strip()
+        if configured_storage:
+            configured_path = Path(configured_storage).expanduser()
+            if not configured_path.is_absolute():
+                configured_path = self.project_root.parents[2] / configured_path
+            self.storage_path = configured_path.resolve()
+        else:
+            self.storage_path = self.data_dir / "tender_workflows.json"
         self._lock = threading.RLock()
 
     @staticmethod

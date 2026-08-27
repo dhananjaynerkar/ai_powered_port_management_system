@@ -1,5 +1,5 @@
 [project]
-name = "portproject-rag"
+name = "ai-powered-port-management-system"
 version = "0.1.0"
 description = "Corpus-aware local PDF ingestion for PostgreSQL and pgvector"
 requires-python = ">=3.12"
@@ -31,6 +31,7 @@ where = ["src"]
 dev = [
   "pytest>=8.3,<9",
   "ruff>=0.8,<1",
+  "psutil>=7,<8",
 ]
 billing-training = [
   "numpy>=2,<3",
@@ -40,6 +41,8 @@ billing-training = [
 ]
 
 [project.scripts]
+ai-pms = "portproject_rag.cli:main"
+# Backward-compatible command for existing local installations.
 portproject-rag = "portproject_rag.cli:main"
 
 [tool.pytest.ini_options]

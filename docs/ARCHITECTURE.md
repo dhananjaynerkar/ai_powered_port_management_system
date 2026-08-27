@@ -4,9 +4,9 @@
 
 ## Scope
 
-PortProject RAG Portal is a local Windows-oriented React + FastAPI application.
+AI-Powered Port Management System is a local Windows-oriented React + FastAPI application.
 It combines existing PMS public tables with application-owned `rag` tables and
-a locally indexed PDF corpus. It does **not** require the separate `AI_PMS`
+a locally indexed PDF corpus. It does **not** require the separate AI PMS
 reference checkout at runtime.
 
 ## Runtime topology
@@ -23,7 +23,7 @@ FastAPI (:8001, loopback only)
 PostgreSQL + pgvector (:5432)
 
 FastAPI --> Ollama (/api/embed, /api/chat, /api/tags)
-FastAPI --> local CrossEncoder reranker
+FastAPI (one local worker; bounded heavy-RAG gate) --> local CrossEncoder reranker
 ```
 
 The launcher starts API and UI separately. The API lifespan runs the idempotent
@@ -58,13 +58,25 @@ PDF -> inspect/profile -> strategy choice -> extract or quarantine
 Question -> guardrail validation -> local query embedding
          -> PostgreSQL lexical + pgvector cosine candidates
          -> role ACL filter -> reciprocal-rank fusion -> CrossEncoder rerank
-         -> parent context -> local LLM -> citation validation
+         -> ACL-filtered adjacent/parent context -> local LLM -> citation validation
          -> answer + real page-level source metadata
 ```
 
-`rag.chunk.acl_roles` is applied during retrieval: an empty array is public to
-portal roles; a populated array requires the current role. The assistant does
-not intentionally generate an answer when there is no retrieved evidence.
+The document-RAG portion of this flow runs behind a process-local capacity gate
+on the supported laptop: one active heavy pipeline and one bounded waiter. A
+full or expired queue returns a safe HTTP 503 capacity response; it cannot
+write a chat or agenda result. The gate is not used by non-RAG routes, and
+`/health/ready` remains a dependency-readiness check rather than an activity
+lock.
+
+`rag.chunk.acl_roles` is applied in the lexical and dense candidate queries:
+an empty array is public to portal roles; a populated array requires the
+current role. This is before RRF and reranking. Adjacent-page promotion and
+parent/context expansion join `chunk_acl` and repeat the same predicate before
+context assembly. Phase 08 verifies this with an acceptance-only mixed-ACL
+document: a tenant query retains the public anchor but excludes restricted
+neighbours. The assistant does not intentionally generate an answer when
+there is no retrieved evidence.
 
 ### Chat and official agendas
 
@@ -112,7 +124,9 @@ For rendered diagrams, see [DIAGRAMS.md](DIAGRAMS.md). Detailed ownership,
 security, workflow, billing, tender, and recovery contracts are maintained in
 [DATABASE.md](DATABASE.md), [SECURITY.md](SECURITY.md), [WORKFLOW.md](WORKFLOW.md),
 [BILLING.md](BILLING.md), [TENDER.md](TENDER.md), and
-[BACKUP_AND_RECOVERY.md](BACKUP_AND_RECOVERY.md).
+[BACKUP_AND_RECOVERY.md](BACKUP_AND_RECOVERY.md). The measured local capacity
+envelope is maintained in
+[RAG_CAPACITY_RESOURCE_CERTIFICATION.md](hardening/RAG_CAPACITY_RESOURCE_CERTIFICATION.md).
 
 ## Database ownership
 

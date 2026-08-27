@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from psycopg import connect
 
-from portproject_rag.api import app, authority_tenants
+from portproject_rag.api import _canonical_tenancy_type_value, app, authority_tenants
 from portproject_rag.auth import PortalUser
 from portproject_rag.settings import Settings
 
@@ -45,7 +45,28 @@ def test_tenant_endpoint_applies_live_lease_filter_and_clamps_page() -> None:
     payload = authority_tenants(lease_type=lease_type, page=999999, page_size=25, user=_authority_user())
 
     assert payload["page"] == payload["pages"]
-    assert all(row["tenancy_type"] == lease_type for row in payload["tenants"])
+    expected_lease_type = _canonical_tenancy_type_value(lease_type)
+    assert all(_canonical_tenancy_type_value(row["tenancy_type"]) == expected_lease_type for row in payload["tenants"])
+
+
+def test_tenant_endpoint_collapses_expired_lease_variants_and_filters_them_together() -> None:
+    """Known source spelling variants must produce one user-facing filter."""
+    settings = Settings()
+    app.state.settings = settings
+    with connect(settings.database_url.unicode_string()) as connection, connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM public.applicant_property_mapping
+            WHERE LOWER(BTRIM(tenancy_type)) IN ('expired lease', 'exipred lease')
+        """)
+        expired_source_count = cursor.fetchone()[0]
+
+    payload = authority_tenants(lease_type="Expired Lease", page_size=100, user=_authority_user())
+
+    assert payload["filters"]["lease_types"].count("Expired Lease") == 1
+    if expired_source_count:
+        assert payload["total"] == expired_source_count
+        assert all(row["tenancy_type"].strip().casefold() in {"expired lease", "exipred lease"} for row in payload["tenants"])
 
 
 def test_tenant_endpoint_rejects_invalid_date_range() -> None:

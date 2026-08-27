@@ -2,7 +2,7 @@
 
 ## 30-second explanation
 
-I built a local-first Port Management System portal with React and FastAPI. It
+I built a local-first AI PMS portal with React and FastAPI. It
 uses PostgreSQL and pgvector for hybrid document retrieval, local Ollama models
 for embeddings and answers, page citations and guardrails for grounded output,
 and a role-governed agenda workflow. It also integrates live land/tenant
@@ -47,4 +47,3 @@ JSON concurrency, and UI/E2E coverage.
 Do not claim a measured RAG accuracy score, complete multilingual OCR, external
 production hardening, or fully verified role-based browser acceptance until the
 roadmap closes those gaps.
-

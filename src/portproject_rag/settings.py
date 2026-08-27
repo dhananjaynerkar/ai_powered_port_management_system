@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 from typing import Literal
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit
 
 from pydantic import AnyUrl, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="PORTPROJECT_RAG_", extra="ignore")
 
     database_url: AnyUrl
+    database_connect_timeout_seconds: int = Field(default=5, ge=1, le=60)
     deployment_environment: Literal["local", "internal", "production"] = "local"
     allowed_origins: str = LOCAL_ALLOWED_ORIGINS
     public_base_url: AnyUrl | None = None
@@ -34,6 +35,7 @@ class Settings(BaseSettings):
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     reranker_device: str = "cpu"
     reranker_use_fp16: bool = False
+    reranker_local_files_only: bool = True
     reranker_max_length: int = Field(default=256, ge=64, le=2048)
     reranker_batch_size: int = Field(default=8, ge=1, le=64)
     batch_size: int = Field(default=16, ge=1, le=256)
@@ -42,15 +44,45 @@ class Settings(BaseSettings):
     retrieval_limit: int = Field(default=8, ge=1, le=100)
     retrieval_candidate_multiplier: int = Field(default=4, ge=1, le=50)
     rerank_candidate_count: int = Field(default=8, ge=1, le=100)
+    candidate_pool_size: int = Field(default=12, ge=1, le=100)
+    final_context_source_count: int = Field(default=4, ge=1, le=20)
+    # The global four-source limit remains certified for multi-evidence
+    # answers. Measured direct/table defaults narrow only simple shapes whose
+    # reviewed evidence and citation replay remained complete.
+    final_context_source_count_direct: int = Field(default=1, ge=1, le=20)
+    final_context_source_count_table: int = Field(default=1, ge=1, le=20)
     rrf_k: int = Field(default=60, ge=1, le=1000)
+    source_hint_boost: float = Field(default=0.01, ge=0, le=1)
+    table_evidence_boost: float = Field(default=0.75, ge=0, le=2)
     parent_context_window: int = Field(default=1, ge=0, le=5)
     context_token_budget: int = Field(default=1800, ge=256, le=32000)
+    context_token_budget_direct: int = Field(default=256, ge=256, le=32000)
+    context_token_budget_list: int = Field(default=1400, ge=256, le=32000)
+    context_token_budget_comparison: int = Field(default=2200, ge=256, le=32000)
+    context_token_budget_table: int = Field(default=350, ge=256, le=32000)
     context_characters_per_token: int = Field(default=4, ge=1, le=16)
     output_token_budget: int = Field(default=350, ge=64, le=8192)
+    output_token_budget_direct: int = Field(default=160, ge=64, le=8192)
+    output_token_budget_list: int = Field(default=280, ge=64, le=8192)
+    # Contracts below request short, source-attributed answers.  These limits
+    # prevent a small local model from reproducing source tables or writing a
+    # legal essay, while still leaving enough room for a grounded comparison.
+    output_token_budget_comparison: int = Field(default=260, ge=64, le=8192)
+    output_token_budget_table: int = Field(default=120, ge=64, le=8192)
     generation_temperature: float = Field(default=0.1, ge=0, le=2)
     generation_think: bool = False
+    generation_compact_instructions: bool = False
+    generation_keep_alive: str = Field(default="10m", min_length=1, max_length=24)
     generation_timeout_seconds: int = Field(default=180, ge=5, le=600)
+    # Local CPU capacity controls.  The safe default is one active heavy RAG
+    # pipeline and one bounded waiter; larger values require a measured,
+    # deployment-specific capacity decision.
+    heavy_rag_concurrency: int = Field(default=1, ge=1, le=2)
+    heavy_rag_queue_capacity: int = Field(default=1, ge=0, le=4)
+    heavy_rag_queue_timeout_seconds: int = Field(default=60, ge=1, le=600)
     citation_validation_retries: int = Field(default=1, ge=0, le=3)
+    reranker_allow_degraded_mode: bool = True
+    reranker_failure_cooldown_seconds: int = Field(default=300, ge=0, le=3600)
     query_max_characters: int = Field(default=3000, ge=100, le=20000)
     login_max_failed_attempts: int = Field(default=5, ge=1, le=100)
     login_rate_limit_window_seconds: int = Field(default=300, ge=1, le=86400)
@@ -97,6 +129,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_deployment_security_contract(self) -> "Settings":
+        query_pairs = parse_qsl(self.database_url.query or "", keep_blank_values=True)
+        if not any(key == "connect_timeout" for key, _value in query_pairs):
+            query_pairs.append(("connect_timeout", str(self.database_connect_timeout_seconds)))
+            self.database_url = AnyUrl.build(
+                scheme=self.database_url.scheme,
+                username=self.database_url.username,
+                password=self.database_url.password,
+                host=self.database_url.host or "",
+                port=self.database_url.port,
+                path=(self.database_url.path or "").lstrip("/"),
+                query=urlencode(query_pairs),
+                fragment=self.database_url.fragment,
+            )
         if self.cookie_samesite == "none" and not self.cookie_secure:
             raise ValueError("cookie_samesite=none requires cookie_secure=true")
 

@@ -224,6 +224,13 @@ def save_agenda_revision(settings: Settings, user: PortalUser, agenda_id: UUID, 
     """Version an official draft only while its authenticated owner holds it."""
     if not draft_text.strip():
         raise HTTPException(status_code=422, detail="An agenda draft cannot be empty.")
+    # Re-read the active source role at the mutation boundary.  Principal
+    # ownership alone is not sufficient: an officer whose DO/NO/HO assignment
+    # was deactivated must not be able to continue editing through a stale
+    # session.
+    actor_role, _ = authority_identity(settings, user)
+    if actor_role != "DO":
+        raise HTTPException(status_code=403, detail="Only a Data Entry Officer can revise an agenda draft.")
     schema = settings.schema_name
     with connect(settings.database_url.unicode_string(), row_factory=dict_row) as connection:
         with connection.cursor() as cursor:
@@ -231,7 +238,11 @@ def save_agenda_revision(settings: Settings, user: PortalUser, agenda_id: UUID, 
             agenda = cursor.fetchone()
             if not agenda or user.principal_id not in {agenda["created_by_principal"], agenda["assigned_do_principal"], agenda["assigned_nodal_principal"], agenda["assigned_hod_principal"]}:
                 raise HTTPException(status_code=404, detail="Agenda not found.")
-            if agenda["current_owner_principal"] != user.principal_id or agenda["state"] in {"APPROVED", "REJECTED"}:
+            if (
+                agenda["current_owner_principal"] != user.principal_id
+                or agenda["current_owner_role"] != "DO"
+                or agenda["state"] not in {"DO_DRAFT", "RETURNED_TO_DO"}
+            ):
                 raise HTTPException(status_code=409, detail="This agenda is view-only for your role.")
             next_version = int(agenda["editing_version"]) + 1
             cursor.execute(f"""INSERT INTO {schema}.agenda_version

@@ -26,22 +26,27 @@ export function displayName(name: string): string {
   }).join(" ");
 }
 
+function uiLocale(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  return document.documentElement.lang || undefined;
+}
+
 export function formatChatTime(timestamp?: string): string {
   if (!timestamp) return "";
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 export function formatWorkflowTime(timestamp?: string): string {
   if (!timestamp) return "";
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? "" : `${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })} · ${date.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+  return Number.isNaN(date.getTime()) ? "" : `${date.toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit", hour12: false })} · ${date.toLocaleDateString(uiLocale(), { month: "short", day: "numeric" })}`;
 }
 
 export function formatEvidenceCreated(timestamp?: string): string {
   if (!timestamp) return "";
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? "" : `Created ${date.toLocaleDateString([], { month: "short", day: "numeric" })} · ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+  return Number.isNaN(date.getTime()) ? "" : `Created ${date.toLocaleDateString(uiLocale(), { month: "short", day: "numeric" })} · ${date.toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit", hour12: false })}`;
 }
 
 export function agendaStatusLabel(state: string): string {
@@ -105,8 +110,9 @@ export function tenantCell(value: string | null | undefined): string {
 }
 
 export function tenantOptionLabel(value: string): string {
-  if (value.toLowerCase() === "fifteen monthly") return "15-Monthly";
-  if (value.toLowerCase() === "exipred lease") return "Expired Lease";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "fifteen monthly" || normalized === "15-monthly") return "15-Monthly";
+  if (normalized === "exipred lease" || normalized === "expired lease") return "Expired Lease";
   return value;
 }
 

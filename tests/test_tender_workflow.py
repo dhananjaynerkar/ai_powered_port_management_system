@@ -9,6 +9,24 @@ def _service(tmp_path: Path) -> TenderWorkflowService:
     return service
 
 
+def test_tender_storage_path_can_be_overridden_for_acceptance(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / "acceptance" / "tender_workflows.json"
+    monkeypatch.setenv("PORTPROJECT_RAG_TENDER_STORAGE_PATH", str(target))
+
+    service = TenderWorkflowService()
+
+    assert service.storage_path == target.resolve()
+
+
+def test_tender_relative_storage_path_is_project_relative(monkeypatch) -> None:
+    monkeypatch.setenv("PORTPROJECT_RAG_TENDER_STORAGE_PATH", "tests/runtime/tender/tender_workflows.json")
+
+    service = TenderWorkflowService()
+
+    expected = Path(__file__).resolve().parents[1] / "tests" / "runtime" / "tender" / "tender_workflows.json"
+    assert service.storage_path == expected.resolve()
+
+
 def test_tender_sources_expose_only_eligible_vacant_plots(tmp_path: Path) -> None:
     service = _service(tmp_path)
 

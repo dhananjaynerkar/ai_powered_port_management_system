@@ -19,4 +19,4 @@ def test_unknown_and_missing_citations_are_rejected() -> None:
 def test_empty_evidence_never_calls_generation() -> None:
     result = generate_grounded_answer(SimpleNamespace(), "Unknown question", [])
     assert result.citation_valid is True
-    assert "does not contain enough evidence" in result.answer
+    assert "couldn't find" in result.answer.casefold()

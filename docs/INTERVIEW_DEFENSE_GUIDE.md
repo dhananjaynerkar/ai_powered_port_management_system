@@ -7,7 +7,7 @@ limits are. It is not a substitute for the source code or acceptance evidence.
 
 ## 30-second explanation
 
-PortProject RAG Portal is a local-first React/FastAPI application for a port
+AI-Powered Port Management System is a local-first React/FastAPI application for a port
 authority. It reads existing PMS identities, land/tenant mappings, and billing
 references from PostgreSQL, indexes PDF pages into a `rag` schema with 1,024-
 dimension pgvector embeddings, and answers role-filtered questions with page
@@ -47,9 +47,13 @@ PDFs.
    records retain versions/messages/context snapshots.
 5. **Why explicit source warnings:** billing/tender inputs are not inferred when
    an approved value is absent; the UI surfaces missing evidence for review.
-6. **How it is validated:** 48 Python tests, Ruff, Vite build, clean-install
-   evidence, resilience/performance reports, and phase-specific documentation
-   are checked separately. Full production readiness is a separate gate.
+6. **How it is validated:** the latest local checkpoint is recorded in
+   `docs/hardening/RAG_CAPACITY_RESOURCE_CERTIFICATION.md`; the final run has
+   **102 passed and 28 skipped** in the non-acceptance Python suite, with Ruff,
+   the Vite production build, and guarded Phase 08/09 acceptance passing. Full
+   production readiness remains a separate deployment-owner gate. The local
+   capacity envelope is one active heavy RAG pipeline, one bounded waiter, and
+   one FastAPI worker; the capacity certificate records the measured limits.
 
 ## Technology answers
 
@@ -68,10 +72,14 @@ PDFs.
 
 ### How is access control applied to RAG?
 
-The current principal is resolved from the session, retrieval filters chunks by
-`acl_roles`, and only authorized chunks enter reranking/context. The answer
-payload returns the source metadata selected from that authorized context.
-Authorization is not delegated to the model.
+The current principal is resolved from the session, and lexical/dense retrieval
+filters candidates by `acl_roles` before RRF and CrossEncoder reranking.
+Adjacent-page promotion and parent/context expansion join `chunk_acl` and
+repeat the public-or-current-role predicate before text is assembled for the
+model. The acceptance suite proves this with a mixed-ACL document: a tenant
+retains a public anchor while restricted neighbouring pages are excluded.
+Authorization is not delegated to the model, and the answer payload exposes
+only validated source metadata from the selected result set.
 
 ### What happens when RAG is unavailable?
 
@@ -83,6 +91,7 @@ The exact dependency and timing fields are recorded in safe logs.
 
 Production deployment still needs an approved external credential strategy,
 HTTPS/secure-cookie deployment, least-privilege database role, approved backup
-RPO/RTO, authenticated cross-principal acceptance, and the Phase 18 release gate.
-The tender store is not a multi-process production database. These are explicit
-limitations, not hidden assumptions.
+RPO/RTO, authenticated browser/accessibility evidence, and hardware-backed
+capacity for the CPU-bound local model stack. The tender store is not a multi-process
+production database, and human semantic review remains required for broader
+RAG claims. These are explicit limitations, not hidden assumptions.

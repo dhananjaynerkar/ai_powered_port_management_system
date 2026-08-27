@@ -1,11 +1,12 @@
 # Phase 15 — Clean install and reproducibility
 
-**Executed:** 2026-08-25 (local Windows validation)
-**Scope:** disposable clone, package installation, frontend installation/build,
-documented checks, and isolated health/readiness smoke tests.
-**Status:** **PARTIAL — installation and local smoke checks pass; the complete
-integration suite needs the approved test services and fixture bundle that are
-intentionally outside Git.**
+**Executed:** 2026-08-26 (local Windows validation)
+**Scope:** clean current-worktree copy, package installation, frontend
+installation/build, documented checks, and isolated health/readiness smoke
+tests.
+**Status:** **PARTIAL — clean installation, lint, build, and liveness pass; the
+complete integration suite and readiness require the approved isolated services
+and fixture bundle that are intentionally outside Git.**
 
 ## Objective and boundary
 
@@ -15,9 +16,15 @@ than succeeding only because the developer machine already has a virtualenv,
 artifacts. No real `.env` value, database password, tenant row, model binary, or
 ignored source bundle was copied into the disposable clone.
 
-The validation clone was created from the pushed `main` commit `9d07c10`
-(`Record Phase 14 performance baseline`). The actual local checkout remained
-separate from the disposable environments.
+The final validation copy was created from the current working tree (including
+the current uncommitted Phase 14 changes) at:
+`C:\Users\15dha\AppData\Local\Temp\portproject-rag-phase15-clean-2f5f5e7f3bf24f6b9d57c2a2b3c8e4a1`.
+It was copied with an explicit exclusion list for `.git`, `.venv`,
+`node_modules`, generated artifacts, runtime fixtures, credentials, caches,
+`.env`, and logs. An initial disposable copy was discarded after its exclusion
+check found an ignored runtime fixture; no fixture contents were printed or
+used. The actual local checkout remained separate from the disposable
+environment.
 
 ## Setup corrections made before the final run
 
@@ -49,32 +56,32 @@ for the portal/RAG runtime.
 | Dependency integrity | **PASS** | `pip check` reported no broken requirements |
 | Development tools | **PASS** | pytest 8.4.2; Ruff 0.16.4 |
 | Ruff | **PASS** | `ruff check src tests` — all checks passed |
-| Non-live regression suite | **PASS** | 31 passed after excluding explicitly source-backed integration modules |
-| Full regression suite | **PARTIAL** | 34 passed, 14 failed; failures are external database or ignored fixture prerequisites, not import/install failures |
+| Full regression suite | **PARTIAL** | 43 passed, 20 failed, 28 skipped; failures are external database or ignored billing-artifact prerequisites, not import/install failures |
 | Frontend dependency install | **PASS** | `npm ci`; 70 packages installed, audit reported 0 vulnerabilities |
 | Frontend production build | **PASS** | `npm run build` completed with Vite 7.3.6 |
 | API liveness smoke | **PASS** | Fresh API on isolated port 8015 returned HTTP 200 and `X-Request-ID` |
 | API readiness smoke | **EXPECTED BLOCK** | HTTP 503 with `init_error=database_unavailable` from the safe `.env.example` placeholder URL |
 | UI delivery smoke | **PASS** | Fresh Vite instance on isolated port 5175 returned HTTP 200 |
-| Secret tracking check | **PASS** | `.env.example` is tracked; `.env`, `.venv`, `node_modules`, and artifacts are ignored/untracked |
+| Optional training dependencies | **PASS** | `pandas` and `xgboost` were not installed in the base environment; the separate `billing-training` extra remains optional |
+| Clean-copy safety check | **PASS** | Final copy contained no `.env`, runtime fixtures, credentials, caches, generated artifacts, `.venv`, or `node_modules` before installation |
 
 The disposable API and Vite processes were stopped after the checks. The
 existing project services were not replaced or reconfigured.
 
 ## Full-suite failure classification
 
-The 14 expected clean-clone failures are attributable to two missing approved
-inputs:
+The 20 clean-clone failures are attributable to two missing approved inputs:
 
 - **Database-backed checks (8):** authority metrics, live corpus state, RAG gold
   references, and tenant pagination. The template URL intentionally uses the
   `USER`/`CHANGE_ME` placeholder and must not be replaced with guessed or
   copied credentials.
-- **Ignored runtime/source fixtures (6):** four billing service tests require
-  `artifacts/billing_forecast/runtime/...`; two tender tests require the
-  generated `data2/tender_exports/tender_plot_master.csv` source bundle.
+- **Ignored billing artifacts (12):** the billing-phase and billing-service
+  checks require `artifacts/billing_forecast/runtime/...` model/rules/manifest
+  inputs. These artifacts are generated or supplied separately and were not
+  copied into the clean environment.
 
-Those files are ignored by design because they can contain private operational
+Those files are excluded by design because they can contain private operational
 data or generated model artifacts. Phase 01 defines the approved isolated
 fixture contract; it must be provisioned before claiming a full integration
 pass. The clean base environment confirmed that `pandas` and `xgboost` are not
@@ -97,9 +104,13 @@ Copy-Item .env.example .env
 \.venv\Scripts\ruff.exe check src tests
 ```
 
-Before the full suite or `/health/ready`, provision only the approved isolated
-database, Ollama models, and non-secret billing/tender fixture bundle. Never
-copy the developer `.env`, database dump, tenant data, or model cache into Git.
+Before the full suite or `/health/ready`, replace the template database URL
+with an operator-approved isolated database and provision only the approved
+Ollama models and non-secret billing fixture bundle. The clean smoke test left
+the template URL unchanged, so `/health/ready` correctly returned
+`503 database_unavailable`; it did not authenticate to or modify a database.
+Never copy the developer `.env`, database dump, tenant data, or model cache into
+Git.
 
 ## Remaining reproducibility risk
 

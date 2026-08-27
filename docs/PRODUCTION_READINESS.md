@@ -8,9 +8,9 @@ from what still requires deployment-owner evidence.
 
 | Target | Status | Evidence/condition |
 | --- | --- | --- |
-| Local demo | **PASS** | API/UI start instructions, health/readiness routes, frontend build, and the current Python suite are documented; the current Phase 16 checkpoint recorded 48 tests passing. |
-| Controlled internal pilot | **CONDITIONAL** | Requires an approved database/fixture environment, HTTPS, secure cookies, explicit origins, private Ollama, and authenticated role/isolation acceptance. |
-| Production | **NOT VERIFIED** | Requires the Phase 18 release gate, strong PostgreSQL TLS/least privilege, credential compatibility decision, backup/restore evidence, browser/accessibility matrix, performance targets, and failure-recovery evidence. |
+| Local demo | **CONDITIONAL PASS** | The API/UI, readiness path, frontend build, full Python suite, guarded Phase 08/09 acceptance E2E, and bounded local capacity gate are verified; the demo still depends on local PostgreSQL/Ollama, ignored runtime artifacts, and a one-heavy-request CPU envelope. See [capacity certification](hardening/RAG_CAPACITY_RESOURCE_CERTIFICATION.md). |
+| Controlled internal pilot | **NOT VERIFIED** | The current 15.65 GiB host reached unsafe memory headroom during measured RAG pairs. Authenticated browser/accessibility evidence, deployment-owner security settings, recovery sign-off, and multi-user tender storage are also not verified for a pilot topology. |
+| Production | **FAIL** | Deployment-owner security/recovery decisions, human semantic review, hardware-backed capacity, and multi-process tender persistence remain open. See [FINAL_RELEASE_GATE.md](release/FINAL_RELEASE_GATE.md) and the [capacity certification](hardening/RAG_CAPACITY_RESOURCE_CERTIFICATION.md). |
 
 ## Promotion blockers
 
@@ -20,10 +20,11 @@ from what still requires deployment-owner evidence.
 3. Resolve the legacy source-password strategy (migration, SSO, or isolated
    compatibility design) without rewriting source credentials implicitly.
 4. Approve RPO/RTO, encryption, retention, and restore procedures.
-5. Run authenticated cross-principal authorization, workflow concurrency,
-   billing/tender, browser/accessibility, and RAG evaluation checks in an
-   approved environment.
-6. Complete the independent Phase 18 release decision.
+5. Resolve the remaining RAG and release blockers: human citation/semantic
+   review, hardware-backed runtime capacity, production security, recovery, and
+   multi-process tender storage.
+6. Re-run the authenticated browser/accessibility and deployment-owner checks
+   before proposing an internal pilot or production promotion.
 
 ## Historical material
 

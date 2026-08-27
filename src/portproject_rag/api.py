@@ -29,10 +29,13 @@ from .auth import (
     record_login_attempt,
 )
 from .billing import BillingPredictionRequest, BillingPredictionService
+from .capacity import CAPACITY_BUSY_MESSAGE, CapacityBusyError, gate_for_settings
 from .database import migrate
 from .generation import generate_grounded_answer
 from .guardrails import validate_query
-from .retrieval import RetrievedChunk, _rerank, retrieve
+from .query_analysis import classify_source_domain, needs_property_clarification
+from .rag_errors import RagStageError
+from .retrieval import RetrievedChunk, reranker_state, retrieve
 from .settings import Settings
 from .tender_workflow import TenderWorkflowError, TenderWorkflowService
 from .workflow import (
@@ -297,6 +300,7 @@ def build_evidence_payload(results: list[RetrievedChunk]) -> list[dict[str, obje
             "fused_score": item.fused_score,
             "lexical_rank": item.lexical_rank,
             "dense_rank": item.dense_rank,
+            "source_metadata": item.source_metadata,
         }
         for item in results
     ]
@@ -337,17 +341,62 @@ def _answer_payload(
     settings: Settings, question: str, limit: int | None, user_role: str, llm_model: str | None = None
 ) -> dict[str, object]:
     started = perf_counter()
+    source_domain = classify_source_domain(question)
+    if source_domain != "DOCUMENT_RAG":
+        instructions = {
+            "BILLING": "This request needs the Billing Forecast workflow and its source-backed inputs; it is not answered from policy PDFs.",
+            "WORKFLOW": "This request needs the current official agenda workflow record; it is not answered from policy PDFs.",
+            "LIVE_DATABASE": "This request needs live portal data and cannot be answered safely from the document corpus.",
+            "TENDER": "This request needs the Tender Publication workflow and approved inputs; it is not answered from policy PDFs.",
+        }
+        return {
+            "answer": instructions[source_domain], "sources": [], "citation_valid": True, "citation_error": None,
+            "route": source_domain, "llm_model": None, "candidate_count": 0,
+            "timings": {"query_analysis_ms": 0, "embed_ms": 0, "lexical_retrieval_ms": 0, "dense_retrieval_ms": 0, "candidate_fusion_ms": 0, "adjacent_candidates_ms": 0, "rerank_ms": 0, "reranker_load_ms": 0, "reranker_pair_build_ms": 0, "reranker_predict_ms": 0, "reranker_postprocess_ms": 0, "context_selection_ms": 0, "context_assembly_ms": 0, "prompt_build_ms": 0, "generation_ms": 0, "citation_validation_ms": 0, "answer_assembly_ms": 0},
+            "duration_ms": round((perf_counter() - started) * 1000),
+            "reranker_degraded": False,
+            "answer_disposition": "ROUTED",
+        }
+    if needs_property_clarification(question):
+        return {
+            "answer": "Please provide the property or tenancy identifier, purpose, area, and proposed lease term so the applicable rate can be determined safely.",
+            "sources": [], "citation_valid": True, "citation_error": None, "route": "DOCUMENT_RAG", "llm_model": None,
+            "candidate_count": 0, "timings": {"query_analysis_ms": 0, "embed_ms": 0, "lexical_retrieval_ms": 0, "dense_retrieval_ms": 0, "candidate_fusion_ms": 0, "adjacent_candidates_ms": 0, "rerank_ms": 0, "reranker_load_ms": 0, "reranker_pair_build_ms": 0, "reranker_predict_ms": 0, "reranker_postprocess_ms": 0, "context_selection_ms": 0, "context_assembly_ms": 0, "prompt_build_ms": 0, "generation_ms": 0, "citation_validation_ms": 0, "answer_assembly_ms": 0},
+            "duration_ms": round((perf_counter() - started) * 1000), "reranker_degraded": False, "answer_disposition": "AMBIGUOUS",
+        }
     selected_model = _selected_local_model(settings, llm_model)
-    retrieval = retrieve(settings, question, user_role, limit)
-    generated = generate_grounded_answer(settings, question, retrieval.chunks, selected_model)
+    gate = gate_for_settings(settings)
+    lease = gate.acquire()
+    try:
+        retrieval = retrieve(settings, question, user_role, limit)
+        generated = generate_grounded_answer(settings, question, retrieval.chunks, selected_model)
+    finally:
+        # The slot must be released for exceptions, model timeouts, and a
+        # cancelled/abandoned synchronous request just as it is for success.
+        lease.release()
+    if not generated.citation_valid:
+        raise RagStageError("CITATION_FAILURE")
     timings = {
+        "query_analysis_ms": retrieval.timings.query_analysis_ms,
         "embed_ms": retrieval.timings.embed_ms,
         "lexical_retrieval_ms": retrieval.timings.lexical_retrieval_ms,
         "dense_retrieval_ms": retrieval.timings.dense_retrieval_ms,
+        "candidate_fusion_ms": retrieval.timings.candidate_fusion_ms,
+        "adjacent_candidates_ms": retrieval.timings.adjacent_candidates_ms,
         "rerank_ms": retrieval.timings.rerank_ms,
+        "reranker_load_ms": retrieval.timings.reranker_load_ms,
+        "reranker_pair_build_ms": retrieval.timings.reranker_pair_build_ms,
+        "reranker_predict_ms": retrieval.timings.reranker_predict_ms,
+        "reranker_postprocess_ms": retrieval.timings.reranker_postprocess_ms,
+        "context_selection_ms": retrieval.timings.context_selection_ms,
         "context_assembly_ms": retrieval.timings.context_assembly_ms,
+        "prompt_build_ms": generated.prompt_build_ms,
         "generation_ms": generated.generation_ms,
         "citation_validation_ms": generated.citation_validation_ms,
+        "answer_assembly_ms": generated.answer_assembly_ms,
+        "model_load_ms": generated.model_load_ms,
+        "prompt_eval_ms": generated.prompt_eval_ms,
+        "token_generation_ms": generated.token_generation_ms,
     }
     return {
         "answer": generated.answer,
@@ -359,7 +408,23 @@ def _answer_payload(
         "candidate_count": retrieval.candidate_count,
         "timings": timings,
         "duration_ms": round((perf_counter() - started) * 1000),
+        "reranker_degraded": bool(retrieval.diagnostics and retrieval.diagnostics.reranker_degraded),
+        "answer_disposition": generated.disposition,
+        "capacity": {
+            "queue_wait_ms": lease.queue_wait_ms,
+            "inference_active": lease.active_at_acquire,
+            "inference_limit": lease.limit,
+            "capacity_rejected": False,
+        },
     }
+
+
+def _rag_http_exception(error: RagStageError) -> HTTPException:
+    """Map internal pipeline stages to safe API messages and a correlation id."""
+    return HTTPException(
+        status_code=error.details.status_code,
+        detail={**error.public_payload, "request_id": _REQUEST_ID.get() or uuid4().hex},
+    )
 
 
 def _dashboard_metrics(settings: Settings) -> dict[str, object]:
@@ -384,6 +449,28 @@ _BREAKDOWN_COLORS = ("#254c80", "#d72e2e", "#4f84b7", "#29934d", "#d49e00", "#8f
 def _label(value: object, fallback: str = "Not provided") -> str:
     text = str(value or "").strip()
     return text if text else fallback
+
+
+def _canonical_tenancy_type_value(value: str) -> str:
+    """Return the stable UI/filter label without rewriting the source value."""
+    cleaned = value.strip()
+    normalized = cleaned.casefold()
+    if normalized in {"expired lease", "exipred lease"}:
+        return "Expired Lease"
+    if normalized == "fifteen monthly":
+        return "15-Monthly"
+    return cleaned or "Not provided"
+
+
+def _canonical_tenancy_type_sql(column: str) -> str:
+    """Canonicalize known tenancy labels inside read-only SQL projections."""
+    # ``column`` is supplied only by this module's fixed SQL expressions.
+    return f"""CASE
+        WHEN NULLIF(BTRIM({column}), '') IS NULL THEN 'Not provided'
+        WHEN LOWER(BTRIM({column})) IN ('expired lease', 'exipred lease') THEN 'Expired Lease'
+        WHEN LOWER(BTRIM({column})) = 'fifteen monthly' THEN '15-Monthly'
+        ELSE BTRIM({column})
+    END"""
 
 
 def _date_display(value: object) -> str:
@@ -691,7 +778,11 @@ async def lifespan(app: FastAPI):
             missing = sorted(model for model in required if not installed_model(model))
             if missing:
                 raise RuntimeError("Configured local model is unavailable")
-            _rerank(settings, "readiness check", ["readiness check"])
+            # Reranking is optional at startup: retrieval falls back to ACL-safe
+            # RRF ranking when the configured CrossEncoder is unavailable.
+            state = reranker_state(settings)
+            if state["state"] == "degraded" and not settings.reranker_allow_degraded_mode:
+                raise RuntimeError("Configured reranker is unavailable")
             app.state.rag_ready = True
         except Exception as exc:
             app.state.rag_init_error = "rag_dependency_unavailable"
@@ -699,7 +790,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="PortProject RAG Portal", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="AI-Powered Port Management System", version="0.2.0", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -807,6 +898,10 @@ def ready() -> JSONResponse:
         "rag_ready": app.state.rag_ready,
         "init_error": app.state.rag_init_error,
         "corpus": corpus,
+        "reranker": reranker_state(app.state.settings),
+        # Capacity is operational telemetry only; an active request does not
+        # make the dependency readiness check fail.
+        "capacity": gate_for_settings(app.state.settings).snapshot(),
     }
     return JSONResponse(payload, status_code=200 if app.state.rag_ready else 503)
 
@@ -901,8 +996,8 @@ def billing_status(user: PortalUser = Depends(current_user)) -> dict[str, object
     service = _billing_service()
     return {
         "ready": True,
-        "model": str(service.model_path),
-        "manifest": str(service.manifest_path),
+        "model": service.model_path.name,
+        "manifest": service.manifest_path.name,
         "model_loaded": service.model_loaded,
     }
 
@@ -1143,12 +1238,13 @@ def authority_tenants(
         raise HTTPException(status_code=422, detail="date_from must be before or equal to date_to.")
 
     page_size = min(max(page_size, 1), 100)
+    tenancy_type_sql = _canonical_tenancy_type_sql("apm.tenancy_type")
     sort_columns = {
         "tenant_id": "apm.tenant_id",
         "tenancy_id": "NULLIF(BTRIM(apm.tenancy_id), '')",
         "tenant_name": "COALESCE(NULLIF(BTRIM(ar.ind_org_name), ''), NULLIF(BTRIM(ar.username), ''), '')",
         "contact_person": "COALESCE(NULLIF(BTRIM(ar.authorised_person_name), ''), '')",
-        "tenancy_type": "COALESCE(NULLIF(BTRIM(apm.tenancy_type), ''), '')",
+        "tenancy_type": tenancy_type_sql,
         "purpose": "COALESCE(NULLIF(BTRIM(apm.purpose), ''), '')",
         "commencement": "apm.duration_from",
         "status": "COALESCE(NULLIF(BTRIM(apm.status), ''), '')",
@@ -1157,18 +1253,19 @@ def authority_tenants(
     order_direction = "ASC" if sort_direction.lower() == "asc" else "DESC"
     query_text = query.strip()
     pattern = f"%{query_text}%"
-    where_clauses = ["""(%s='' OR CAST(apm.tenant_id AS text) ILIKE %s OR COALESCE(apm.tenancy_id, '') ILIKE %s
+    where_clauses = [f"""(%s='' OR CAST(apm.tenant_id AS text) ILIKE %s OR COALESCE(apm.tenancy_id, '') ILIKE %s
         OR COALESCE(NULLIF(BTRIM(ar.ind_org_name), ''), NULLIF(BTRIM(ar.username), ''), '') ILIKE %s
         OR COALESCE(NULLIF(BTRIM(ar.authorised_person_name), ''), '') ILIKE %s
         OR COALESCE(NULLIF(BTRIM(apm.tenancy_type), ''), '') ILIKE %s
+        OR {tenancy_type_sql} ILIKE %s
         OR COALESCE(NULLIF(BTRIM(apm.purpose), ''), '') ILIKE %s)"""]
-    query_params: list[object] = [query_text, pattern, pattern, pattern, pattern, pattern, pattern]
+    query_params: list[object] = [query_text, pattern, pattern, pattern, pattern, pattern, pattern, pattern]
     if status.strip():
         where_clauses.append("COALESCE(NULLIF(BTRIM(apm.status), ''), 'Not provided') = %s")
         query_params.append(status.strip())
     if lease_type.strip():
-        where_clauses.append("COALESCE(NULLIF(BTRIM(apm.tenancy_type), ''), 'Not provided') = %s")
-        query_params.append(lease_type.strip())
+        where_clauses.append(f"{tenancy_type_sql} = %s")
+        query_params.append(_canonical_tenancy_type_value(lease_type))
     if allotment_status.strip():
         where_clauses.append("CASE WHEN apm.is_alloted IS TRUE THEN 'Allotted' WHEN apm.is_alloted IS FALSE THEN 'Not allotted' ELSE 'Not provided' END = %s")
         query_params.append(allotment_status.strip())
@@ -1200,7 +1297,7 @@ def authority_tenants(
             cursor.execute("""SELECT DISTINCT COALESCE(NULLIF(BTRIM(status), ''), 'Not provided')
                 FROM public.applicant_property_mapping ORDER BY 1""")
             status_options = [row[0] for row in cursor.fetchall()]
-            cursor.execute("""SELECT DISTINCT COALESCE(NULLIF(BTRIM(tenancy_type), ''), 'Not provided')
+            cursor.execute(f"""SELECT DISTINCT {_canonical_tenancy_type_sql('tenancy_type')}
                 FROM public.applicant_property_mapping ORDER BY 1""")
             lease_type_options = [row[0] for row in cursor.fetchall()]
             cursor.execute("""SELECT DISTINCT CASE
@@ -1431,6 +1528,20 @@ def query_in_workflow_agenda(agenda_id: UUID, request: AgendaQuestionRequest, us
         payload = _answer_payload(settings, guardrail.cleaned_text, request.limit, user.role, request.llm_model)
     except HTTPException:
         raise
+    except CapacityBusyError as exc:
+        _log(
+            settings,
+            user,
+            "rag_capacity_rejected",
+            {"reason": exc.reason, "queue_wait_ms": exc.queue_wait_ms, "capacity_rejected": True},
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "RAG_CAPACITY_BUSY", "message": CAPACITY_BUSY_MESSAGE, "request_id": _REQUEST_ID.get() or uuid4().hex},
+        ) from exc
+    except RagStageError as exc:
+        _log(settings, user, "agenda_rag_query_failed", {"agenda_id": str(agenda_id), "stage": exc.stage, "question_length": len(request.question)})
+        raise _rag_http_exception(exc) from exc
     except Exception as exc:
         _log(settings, user, "agenda_rag_query_failed", {"agenda_id": str(agenda_id), "error_type": type(exc).__name__, "question_length": len(request.question)})
         raise HTTPException(status_code=503, detail=f"Retrieval unavailable: {type(exc).__name__}") from exc
@@ -1438,7 +1549,8 @@ def query_in_workflow_agenda(agenda_id: UUID, request: AgendaQuestionRequest, us
     add_agenda_message(settings, user, agenda_id, str(payload["answer"]), "AI", payload["sources"])
     _log(settings, user, "agenda_corpus_query", {
         "agenda_id": str(agenda_id), "duration_ms": payload["duration_ms"], "source_count": len(payload["sources"]),
-        "candidate_count": payload["candidate_count"], "citation_valid": payload["citation_valid"], "llm_model": payload["llm_model"], **payload["timings"],
+        "candidate_count": payload["candidate_count"], "citation_valid": payload["citation_valid"], "llm_model": payload["llm_model"],
+        **payload["timings"], **payload.get("capacity", {}),
     })
     return payload
 
@@ -1456,6 +1568,20 @@ def query(request: QueryRequest, user: PortalUser = Depends(current_user)) -> di
         payload = _answer_payload(settings, guardrail.cleaned_text, request.limit, user.role, request.llm_model)
     except HTTPException:
         raise
+    except CapacityBusyError as exc:
+        _log(
+            settings,
+            user,
+            "rag_capacity_rejected",
+            {"reason": exc.reason, "queue_wait_ms": exc.queue_wait_ms, "capacity_rejected": True},
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "RAG_CAPACITY_BUSY", "message": CAPACITY_BUSY_MESSAGE, "request_id": _REQUEST_ID.get() or uuid4().hex},
+        ) from exc
+    except RagStageError as exc:
+        _log(settings, user, "rag_query_failed", {"stage": exc.stage, "question_length": len(request.question)})
+        raise _rag_http_exception(exc) from exc
     except Exception as exc:
         _log(settings, user, "rag_query_failed", {"error_type": type(exc).__name__, "question_length": len(request.question)})
         raise HTTPException(status_code=503, detail=f"Retrieval unavailable: {type(exc).__name__}") from exc
@@ -1479,6 +1605,7 @@ def query(request: QueryRequest, user: PortalUser = Depends(current_user)) -> di
     _log(settings, user, "corpus_query", {
         "duration_ms": payload["duration_ms"], "source_count": len(payload["sources"]),
         "question_length": len(request.question), "candidate_count": payload["candidate_count"],
-        "citation_valid": payload["citation_valid"], "citation_error": payload["citation_error"], "route": payload["route"], "llm_model": payload["llm_model"], **payload["timings"],
+        "citation_valid": payload["citation_valid"], "citation_error": payload["citation_error"], "route": payload["route"], "llm_model": payload["llm_model"],
+        **payload["timings"], **payload.get("capacity", {}),
     })
     return {**payload, "chat_session_id": str(session_id), "user_created_at": user_created_at, "assistant_created_at": assistant_created_at}

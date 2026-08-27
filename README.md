@@ -1,9 +1,9 @@
-# PortProject RAG Portal
+# AI-Powered Port Management System
 
-Local-first Port Management System portal with document ingestion, PostgreSQL +
+Local-first AI PMS portal with document ingestion, PostgreSQL +
 pgvector retrieval, Authority/Tenant authentication, operational land metrics,
 tenant mapping records, governed agendas, billing forecasting, and tender
-publication workflows. It is a standalone target project; `AI_PMS` is a
+publication workflows. It is a standalone target project; AI PMS is a
 reference project only and is not a runtime dependency.
 
 ## Start here
@@ -16,6 +16,8 @@ Read these documents in order:
 - [API reference](docs/API_REFERENCE.md) — routes, authentication, and contracts.
 - [Database](docs/DATABASE.md) — source-system versus application-owned data.
 - [RAG system](docs/RAG_SYSTEM.md) — ingestion, retrieval, guardrails, and citations.
+- [Final RAG runtime certification](docs/hardening/RAG_RUNTIME_FINAL_CERTIFICATION.md) — frozen quality, runtime measurements, concurrency, and ACL evidence.
+- [RAG capacity certification](docs/hardening/RAG_CAPACITY_RESOURCE_CERTIFICATION.md) — bounded local capacity, memory evidence, worker/queue policy, and deployment envelope.
 - [Security](docs/SECURITY.md) — deployment modes, sessions, authorization, and data boundaries.
 - [Workflow](docs/WORKFLOW.md) — private chat, official agendas, ownership, and transitions.
 - [Billing](docs/BILLING.md) — dynamic prefill, forecast artifact, and deterministic formulas.
@@ -26,6 +28,7 @@ Read these documents in order:
 - [Production readiness](docs/PRODUCTION_READINESS.md) — current readiness levels and open promotion gates.
 - [Interview defense guide](docs/INTERVIEW_DEFENSE_GUIDE.md) — accurate project explanations and trade-offs.
 - [Phase 17 documentation evidence](docs/hardening/PHASE_17_DOCUMENTATION.md) — source reconciliation and documentation verification.
+- [Phase 18 final release gate](docs/release/FINAL_RELEASE_GATE.md) — current local-demo, pilot, and production decision with residual blockers.
 - [Security gate](docs/hardening/PHASE_02_SECURITY.md) — deployment modes, session transport, and credential-compatibility boundaries.
 - [Backup and recovery drill](docs/hardening/PHASE_03_BACKUP_RESTORE.md) — isolated restore evidence and remaining data-recovery decisions.
 
@@ -46,6 +49,11 @@ Copy-Item .env.example .env
 .\start_app.ps1
 ```
 
+For tests and local verification, replace the placeholder database URL in
+`.env` with an operator-approved isolated database (for example, the
+acceptance database). Never point a clean install at the operational
+`portproject` database, and never copy a developer `.env` into the repository.
+
 Open `http://127.0.0.1:5173` and sign in with an existing Authority or Tenant
 database account. The API listens on `127.0.0.1:8001`; PostgreSQL and Ollama
 must be available according to `.env`.
@@ -60,7 +68,7 @@ Set-Location web; npm run build
 
 The complete suite also contains live database and source-backed integration
 checks. Run those only with the approved isolated test database and fixture
-bundle described in [Phase 01](docs/hardening/PHASE_01_TEST_FIXTURE.md);
+bundle described in [Phase 01](docs/hardening/PHASE_01_ACCEPTANCE_ENVIRONMENT_IMPLEMENTED.md);
 credentials and raw fixture data are intentionally not part of this repository.
 
 The `dev` extra supplies the documented test and lint tools. The optional
@@ -77,11 +85,11 @@ frontend dependencies without relying on a developer's existing
 ## Local ingestion commands
 
 ```powershell
-.\.venv\Scripts\portproject-rag inspect .. --output .\artifacts\corpus-report
-.\.venv\Scripts\portproject-rag migrate
-.\.venv\Scripts\portproject-rag ingest --report .\artifacts\corpus-report\corpus.json --dry-run
-.\.venv\Scripts\portproject-rag ingest --report .\artifacts\corpus-report\corpus.json
-.\.venv\Scripts\portproject-rag query "your document question" --limit 8
+.\.venv\Scripts\ai-pms inspect .. --output .\artifacts\corpus-report
+.\.venv\Scripts\ai-pms migrate
+.\.venv\Scripts\ai-pms ingest --report .\artifacts\corpus-report\corpus.json --dry-run
+.\.venv\Scripts\ai-pms ingest --report .\artifacts\corpus-report\corpus.json
+.\.venv\Scripts\ai-pms query "your document question" --limit 8
 ```
 
 `inspect` is read-only. `migrate` creates only the configured application

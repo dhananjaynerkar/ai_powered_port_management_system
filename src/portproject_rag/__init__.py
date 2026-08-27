@@ -1,2 +1,1 @@
-"""Local corpus-aware PDF ingestion for the portproject database."""
-
+"""Local corpus-aware PDF ingestion for the AI PMS database."""

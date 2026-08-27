@@ -179,11 +179,17 @@ The report-only change passed these checks:
 
 | Check | Result |
 |---|---|
-| `python -m pytest tests/test_tender_workflow.py -q` | **3 passed** |
-| `python -m pytest -q` | **45 passed** |
+| `python -m pytest tests/test_tender_workflow.py -q` | **5 passed** |
+| `python -m pytest -q` | **63 passed, 27 skipped**; acceptance tests are explicitly opt-in |
 | `python -m ruff check src tests` | **All checks passed** |
 | `python -m compileall -q src tests` | **Passed** |
 | `npm run build` (web) | **Passed**; TypeScript and Vite production build completed |
+
+The focused tender tests were rerun on 2026-08-25 after the Phase 10 changes;
+no tender source or committed workflow file was modified. The acceptance
+fixture loader requires an explicit opt-in before any acceptance database
+test can run, preventing a plain project-wide test command from mutating or
+reusing shared acceptance state.
 
 The repository validation suite remains the authoritative regression check. Phase 11 does not include a storage migration or runtime source change.
 

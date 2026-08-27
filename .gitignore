@@ -1,4 +1,40 @@
-.env
+# Local environment files may contain database credentials, API keys, cookies,
+# and deployment settings. Keep only sanitized templates in version control.
+.env*
+!.env.example
+!.env.acceptance.example
+
+# Private credentials and certificates.
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+
+# Local databases, exports, and backup archives.
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+*.backup
+*.sql.gz
+
+# Local uploads, corpus copies, and generated archives.
+uploads/
+documents/
+data/
+datasets/
+queries/
+src/portproject_rag/tender_workflow/data2/
+docs/hardening.zip
+docs/release.zip
+
+# Local logs and runtime state.
+logs/
+runtime_logs/
 .venv/
 node_modules/
 .pytest-tmp/
@@ -12,6 +48,7 @@ runtime_logs/
 web/dist/
 web/.vite/
 web/*.tsbuildinfo
+tests/runtime/
 __pycache__/
 *.py[cod]
 *.egg-info/

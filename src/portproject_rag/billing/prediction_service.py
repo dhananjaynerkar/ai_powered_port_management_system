@@ -53,7 +53,14 @@ def _rate(value: Any) -> Optional[float]:
     parsed = _number(value)
     if parsed is None:
         return None
-    return parsed / 100.0 if abs(parsed) >= 1 else parsed
+    if parsed < 0:
+        raise ValueError("Billing rates cannot be negative.")
+    # Every billing rate source is expressed as a percentage: the database
+    # columns, the selected-tenancy CSV, and the form fields all use values
+    # such as 30 for 30% and 0.5 for 0.5%.  Treating values below one as
+    # already-normalized fractions turns 0.5% into 50%, so normalize the
+    # source unit consistently here.
+    return parsed / 100.0
 
 
 def _period_index(year: int, month: int) -> int:
@@ -115,6 +122,7 @@ class BillingPredictionResult:
     formula_schedule: str
     tax_items: list[dict[str, Any]]
     total_formula_tax: float
+    calculation_intermediates: dict[str, float]
     calculation_steps: list[str]
     data_source: str
     fallback_applied: bool
@@ -124,6 +132,12 @@ class BillingPredictionResult:
     def as_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["request"] = asdict(self.request)
+        # The API response is user-facing.  Keep artifact provenance useful
+        # without exposing the server's absolute filesystem layout.
+        payload["model_path"] = Path(self.model_path).name
+        metrics = payload.get("model_metrics")
+        if isinstance(metrics, dict) and metrics.get("formula_source"):
+            metrics["formula_source"] = Path(str(metrics["formula_source"])).name
         return payload
 
     def summary(self) -> str:
@@ -652,6 +666,7 @@ class BillingPredictionService:
             formula_schedule=formula["formula_schedule"],
             tax_items=formula["tax_items"],
             total_formula_tax=formula["total_formula_tax"],
+            calculation_intermediates=formula["intermediates"],
             calculation_steps=formula["calculation_steps"],
             data_source="postgres.public.tgeneralbill + master tables",
             fallback_applied=bool(fallback_reasons),
@@ -708,6 +723,7 @@ class BillingPredictionService:
     def predict_from_inputs(self, request: BillingPredictionRequest) -> BillingPredictionResult:
         """Run the complete prediction-interface form without requiring a customer lookup."""
         self._apply_request_defaults(request)
+        self._validate_manual_inputs(request)
         model = self._get_model()
         required = {
             "present_year": request.present_year,
@@ -792,6 +808,7 @@ class BillingPredictionService:
             formula_schedule=formula["formula_schedule"],
             tax_items=formula["tax_items"],
             total_formula_tax=formula["total_formula_tax"],
+            calculation_intermediates=formula["intermediates"],
             calculation_steps=formula["calculation_steps"],
             data_source="complete billing form + exported XGBoost model artifact",
             fallback_applied=bool(rate_reasons),
@@ -971,6 +988,61 @@ class BillingPredictionService:
                 parsed = 0.0
             rates[name] = parsed
         return rates, reasons
+
+    def _validate_manual_inputs(self, request: BillingPredictionRequest) -> None:
+        """Reject invalid form values before loading/evaluating the model."""
+        required = {
+            "present_year": request.present_year,
+            "present_month": request.present_month,
+            "present_amount": request.present_amount,
+            "present_cgst": request.present_cgst,
+            "present_sgst": request.present_sgst,
+            "area": request.area,
+            "structure_type": request.structure_type,
+        }
+        missing = [name for name, value in required.items() if value is None or (isinstance(value, str) and not value.strip())]
+        if missing:
+            raise ValueError(f"Complete the billing form. Missing: {', '.join(missing)}.")
+
+        numeric_fields = (
+            "present_year", "present_month", "target_year", "target_month",
+            "present_amount", "present_cgst", "present_sgst", "area",
+        )
+        for name in numeric_fields:
+            value = getattr(request, name, None)
+            parsed = _number(value)
+            if parsed is None:
+                raise ValueError(f"{name} must be a finite number.")
+            if parsed < 0:
+                raise ValueError(f"{name} cannot be negative.")
+
+        valid_months = {int(item["value"]) for item in self.rules["months"]}
+        if int(request.present_month) not in valid_months or int(request.target_month) not in valid_months:
+            raise ValueError("Present and target months must be between 1 and 12.")
+        if int(request.present_year) < 2000 or int(request.target_year) < 2000:
+            raise ValueError("Present and target years must be valid four-digit years.")
+        if _period_index(int(request.target_year), int(request.target_month)) <= _period_index(int(request.present_year), int(request.present_month)):
+            raise ValueError("Target month must be after the present bill month.")
+        self._validate_horizon(int(request.present_year), int(request.present_month), int(request.target_year), int(request.target_month))
+        self._model_bill_type(request.bill_type)
+
+        structure_text = str(request.structure_type or "").strip().lower()
+        supported_structure = next(
+            (
+                item
+                for item in self.rules["structures"]
+                if item["value"] == request.structure_type
+                or any(term in structure_text for term in item.get("match_terms", []))
+            ),
+            None,
+        )
+        if supported_structure is None:
+            raise ValueError(f"unsupported structure_type: {request.structure_type}")
+        if request.billing_frequency and self._normalize_frequency(request.billing_frequency) is None:
+            raise ValueError(f"Unsupported billing_frequency: {request.billing_frequency}")
+        # Validate supplied source/form rates before the model is evaluated so
+        # an invalid rate cannot produce a partial prediction.
+        self._normalize_rates(dict(request.rates or {}))
 
     def _normalize_frequency(self, value: Any) -> Optional[str]:
         if value is None:
@@ -1153,6 +1225,21 @@ class BillingPredictionService:
             "formula_notice": formula_notice,
             "tax_items": tax_items,
             "total_formula_tax": total_tax,
+            "intermediates": {
+                "monthly_base_amount": float(monthly_base),
+                "annual_amount": float(annual_amount),
+                "letting_value": float(letting_value),
+                "grvp": float(grvp),
+                "nrvp": float(nrvp),
+                "grvs": float(grvs),
+                "nrvs": float(nrvs),
+                "half_annual": float(half_annual),
+                "predicted_cgst": float(predicted_cgst),
+                "predicted_sgst": float(predicted_sgst),
+                "total_formula_tax": float(total_tax),
+                "final_amount": float(final_amount),
+            },
+            "normalized_rates": {key: float(value) for key, value in rates.items()},
             "calculation_steps": steps,
             "formula_source_file": rules.get("formula_source_file"),
         }

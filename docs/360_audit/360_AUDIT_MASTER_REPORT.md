@@ -1,8 +1,8 @@
-# PortProject RAG — 360-degree master audit
+# AI-Powered Port Management System — 360-degree master audit
 
 ## 1. What is this project?
 
-It is a local-first Port Management System portal combining a React/Vite
+It is a local-first AI PMS portal combining a React/Vite
 frontend, FastAPI backend, PostgreSQL/pgvector document RAG, existing PMS data,
 official agenda workflow, billing forecast, and tender publication preparation.
 

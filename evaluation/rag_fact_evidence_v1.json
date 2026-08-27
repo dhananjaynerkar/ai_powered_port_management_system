@@ -1,0 +1,73 @@
+{
+  "schema_version": "rag_fact_evidence_v1",
+  "created_at": "2026-08-26",
+  "source_contract": "rag_answer_contract_v2.json",
+  "scope": "Fact-level evaluation metadata for the reviewed final-context cases only. It is never loaded by production retrieval or generation.",
+  "records": [
+    {
+      "id": "RG-003",
+      "facts": [
+        {
+          "fact_id": "sublease_policy_exception",
+          "description": "Sub-leasing is generally disallowed, with only policy-guided special-purpose exceptions.",
+          "acceptable_evidence_sets": [[{"filename": "Annexure to TR No.23 - Procedure  Manner.pdf", "page": 12}], [{"filename": "Annexure to TR No.23 - Procedure  Manner.pdf", "page": 36}]]
+        },
+        {
+          "fact_id": "transfer_approval_liabilities_land_use",
+          "description": "Transfer requires prior Board approval, transfer of original liabilities, and compliance with the Port land-use plan.",
+          "acceptable_evidence_sets": [[{"filename": "Annexure to TR No.23 - Procedure  Manner.pdf", "page": 12}], [{"filename": "Annexure to TR No.23 - Procedure  Manner.pdf", "page": 36}]]
+        },
+        {
+          "fact_id": "upfront_rental_and_operation_of_law_terms",
+          "description": "Upfront-rental transfers carry pro-rata rental and a 50% pro-rata fee, with the operation-of-law administrative-charge exception.",
+          "acceptable_evidence_sets": [[{"filename": "Annexure to TR No.23 - Procedure  Manner.pdf", "page": 12}], [{"filename": "Annexure to TR No.23 - Procedure  Manner.pdf", "page": 36}]]
+        },
+        {
+          "fact_id": "transfer_assignment_charges",
+          "description": "Transfer or assignment requires prior Board approval and applicable transfer charges or fees.",
+          "acceptable_evidence_sets": [[{"filename": "Annexure to TR No.23 - Procedure  Manner.pdf", "page": 12}], [{"filename": "Annexure to TR No.23 - Procedure  Manner.pdf", "page": 37}]]
+        }
+      ]
+    },
+    {
+      "id": "RG-005",
+      "facts": [
+        {
+          "fact_id": "statutory_over_thirty_threshold",
+          "description": "The statutory background permits leases up to 30 years and requires prior Central Government approval for a term exceeding 30 years.",
+          "acceptable_evidence_sets": [[{"filename": "PGLM 2015_Compilation.pdf", "page": 3}]]
+        },
+        {
+          "fact_id": "board_approval_up_to_thirty",
+          "description": "The Port may lease land up to a maximum cumulative period of 30 years with Board approval.",
+          "acceptable_evidence_sets": [[{"filename": "PGLM 2015_Compilation.pdf", "page": 9}]]
+        },
+        {
+          "fact_id": "renewal_recommendation_and_government_path",
+          "description": "Renewals beyond 30 years, up to a 99-year cumulative limit, require Board recommendation and the Empowered Committee/Government path.",
+          "acceptable_evidence_sets": [[{"filename": "PGLM 2015_Compilation.pdf", "page": 9}, {"filename": "PGLM 2015_Compilation.pdf", "page": 10}]]
+        },
+        {
+          "fact_id": "capital_intensive_over_thirty_path",
+          "description": "Capital-intensive proposals beyond 30 years are submitted with Board recommendations through the Empowered Committee and Ministry approval path.",
+          "acceptable_evidence_sets": [[{"filename": "PGLM 2015_Compilation.pdf", "page": 10}]]
+        }
+      ]
+    },
+    {
+      "id": "RG-010",
+      "facts": [
+        {
+          "fact_id": "clarification_fresh_lease_authority",
+          "description": "The later clarification treats renewal as a fresh lease and determines authority from the renewal period without counting the earlier lease.",
+          "acceptable_evidence_sets": [[{"filename": "Clarification No 1 of 2018_1688.pdf", "page": 9}]]
+        },
+        {
+          "fact_id": "pglm_corresponding_clarification",
+          "description": "The PGLM compilation contains the corresponding clarification text.",
+          "acceptable_evidence_sets": [[{"filename": "PGLM 2015_Compilation.pdf", "page": 18}]]
+        }
+      ]
+    }
+  ]
+}
