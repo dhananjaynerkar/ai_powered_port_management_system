@@ -6,6 +6,23 @@ tenant mapping records, governed agendas, billing forecasting, and tender
 publication workflows. It is a standalone target project; AI PMS is a
 reference project only and is not a runtime dependency.
 
+## Implementation status
+
+| Area | Status | Evidence |
+| --- | --- | --- |
+| PDF/OCR ingestion and page provenance | Implemented with explicit provider-availability and quarantine states | docs/ARCHITECTURE.md, docs/DIAGRAMS.md |
+| Lexical + vector retrieval, RRF, and reranking | Implemented | src/portproject_rag/retrieval.py and tests |
+| Role/tenant ACL filtering and citation validation | Implemented for documented acceptance paths | docs/SECURITY.md and docs/hardening/RAG_RUNTIME_FINAL_CERTIFICATION.md |
+| Local Ollama generation | Implemented as a local dependency | docs/RAG_SYSTEM.md and .env.example |
+| Workflow, billing, and tender modules | Implemented with documented acceptance/local-storage limits | docs/WORKFLOW.md, docs/BILLING.md, docs/TENDER.md |
+| Production deployment and enterprise scale | Not verified | docs/PRODUCTION_READINESS.md and docs/release/FINAL_RELEASE_GATE.md |
+| Agent/MCP/VLM/fine-tuning/true iterative multi-hop retrieval | Not claimed | No public implementation evidence |
+
+## Evaluation snapshot
+
+The reviewed runtime certificate records AnyHit@5 0.89, EvidenceCoverage@5 0.85, 10/10 mapped facts covered, and 9/9 citation-valid generation replays. These are corpus-bound checkpoints, not production-scale or semantic-faithfulness guarantees. See [the evaluation protocol](docs/evaluation_protocol.md) for the measurement boundary and reproduction fields.
+
+
 ## Start here
 
 Read these documents in order:
@@ -23,6 +40,7 @@ Read these documents in order:
 - [Billing](docs/BILLING.md) — dynamic prefill, forecast artifact, and deterministic formulas.
 - [Tender](docs/TENDER.md) — source-backed tender state machine and JSON persistence boundary.
 - [Testing and evaluation](docs/TESTING_AND_EVALUATION.md) — regression, RAG, and acceptance evidence.
+- [Evaluation protocol](docs/evaluation_protocol.md) — metric definitions, corpus boundaries, and reproducibility fields.
 - [Backup and recovery](docs/BACKUP_AND_RECOVERY.md) — state inventory and restore boundary.
 - [Project map](docs/PROJECT_MAP.md) — major folders and source-file ownership.
 - [Production readiness](docs/PRODUCTION_READINESS.md) — current readiness levels and open promotion gates.
