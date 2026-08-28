@@ -11,6 +11,10 @@ jobs:
   python:
     name: Python tests and lint
     runs-on: ubuntu-latest
+    env:
+      # The application requires a DSN at import time. This is a non-operational
+      # placeholder used only by tests that do not require a live database.
+      PORTPROJECT_RAG_DATABASE_URL: postgresql://ci_user:ci_password@127.0.0.1:5432/ci
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -23,8 +27,14 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Run Ruff
         run: ruff check src tests
-      - name: Run Python tests
-        run: pytest -q
+      - name: Run database-independent Python tests
+        run: >-
+          pytest -q
+          --ignore=tests/test_authority_metrics.py
+          --ignore=tests/test_live_corpus_evaluation.py
+          --ignore=tests/test_rag_gold_set.py
+          --ignore=tests/test_tenant_pagination.py
+          --ignore=tests/acceptance
 
   frontend:
     name: Frontend build
@@ -58,4 +68,3 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
