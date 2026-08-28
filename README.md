@@ -1,5 +1,10 @@
 # AI-Powered Port Management System
 
+## About
+
+A local-first port-management AI platform with PDF/OCR ingestion, PostgreSQL full-text search, pgvector retrieval, hybrid rank fusion, reranking, page-level citations, access controls, local Ollama generation, and governed workflow support. The documented evaluation is corpus-bound and production deployment is not verified.
+
+
 Local-first AI PMS portal with document ingestion, PostgreSQL +
 pgvector retrieval, Authority/Tenant authentication, operational land metrics,
 tenant mapping records, governed agendas, billing forecasting, and tender
