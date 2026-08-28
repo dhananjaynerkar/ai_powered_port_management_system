@@ -15,6 +15,7 @@ jobs:
       # The application requires a DSN at import time. This is a non-operational
       # placeholder used only by tests that do not require a live database.
       PORTPROJECT_RAG_DATABASE_URL: postgresql://ci_user:ci_password@127.0.0.1:5432/ci
+      PYTHONPATH: .
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
